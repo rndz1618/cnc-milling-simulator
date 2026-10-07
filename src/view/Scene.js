@@ -185,17 +185,30 @@ export function createWorkZeroMarker() {
   return g;
 }
 
-function colorForZ(z) {
+function colorForZ(z, trail) {
+  if (trail) {
+    if (z >= 0) return 0x44ffee;
+    if (z >= -5) return 0x66ff88;
+    if (z >= -15) return 0xffee44;
+    return 0xff8844;
+  }
   if (z >= 0) return 0x44ddff;
   if (z >= -5) return 0xffdd44;
   if (z >= -15) return 0xff9944;
   return 0xff4488;
 }
 
+/**
+ * Build toolpath LineSegments.
+ * opts.mode = 'trail' → progressive path during Cycle Start (brighter)
+ * opts.mode = 'preview' (default) → full GRAPH path (dim rapids)
+ * opts.liveEnd = {x,y,z,type} optional current tool tip for live segment
+ */
 export function buildToolpathLines(moves, opts = {}) {
   const group = new THREE.Group();
   if (!moves || moves.length < 1) return group;
 
+  const isTrail = opts.mode === 'trail';
   const clearance = opts.rapidClearance ?? 15;
   let zRef = 0;
   for (const m of moves) {
@@ -223,11 +236,31 @@ export function buildToolpathLines(moves, opts = {}) {
     if (isRapid) {
       rapidPositions.push(prev.x, z0, prev.y, m.x, z1, m.y);
     } else {
-      const col = colorForZ(Math.min(z0, z1));
+      const col = colorForZ(Math.min(z0, z1), isTrail);
       if (!feedBuckets.has(col)) feedBuckets.set(col, []);
       feedBuckets.get(col).push(prev.x, z0, prev.y, m.x, z1, m.y);
     }
     prev = m;
+  }
+
+  if (opts.liveEnd) {
+    const le = opts.liveEnd;
+    const isRapid = le.type === 'rapid';
+    let z0 = prev.z;
+    let z1 = le.z;
+    if (isRapid) {
+      z0 = Math.min(z0, rapidCap);
+      z1 = Math.min(z1, rapidCap);
+    }
+    if (Math.abs(prev.x - le.x) > 0.01 || Math.abs(prev.y - le.y) > 0.01 || Math.abs(z0 - z1) > 0.01) {
+      if (isRapid) {
+        rapidPositions.push(prev.x, z0, prev.y, le.x, z1, le.y);
+      } else {
+        const col = colorForZ(Math.min(z0, z1), isTrail);
+        if (!feedBuckets.has(col)) feedBuckets.set(col, []);
+        feedBuckets.get(col).push(prev.x, z0, prev.y, le.x, z1, le.y);
+      }
+    }
   }
 
   if (rapidPositions.length >= 6) {
@@ -236,9 +269,9 @@ export function buildToolpathLines(moves, opts = {}) {
     group.add(new THREE.LineSegments(
       geo,
       new THREE.LineBasicMaterial({
-        color: 0xff4444,
+        color: isTrail ? 0xff6666 : 0xff4444,
         transparent: true,
-        opacity: 0.22,
+        opacity: isTrail ? 0.45 : 0.22,
         depthWrite: false
       })
     ));
@@ -253,7 +286,8 @@ export function buildToolpathLines(moves, opts = {}) {
       new THREE.LineBasicMaterial({
         color: col,
         transparent: true,
-        opacity: 0.95
+        opacity: isTrail ? 1.0 : 0.9,
+        depthWrite: false
       })
     ));
   }
