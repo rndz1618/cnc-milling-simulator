@@ -12,7 +12,6 @@ export function createScene(container) {
     0.1,
     2000
   );
-  // Look at stock center (work X50 Y40, top Z0 → Three 50,0,40)
   camera.position.set(160, 110, 200);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -28,7 +27,6 @@ export function createScene(container) {
   controls.target.set(50, 0, 40);
   controls.maxPolarAngle = Math.PI * 0.92;
 
-  // Brighter lighting so brass stock is clearly visible
   scene.add(new THREE.AmbientLight(0x607080, 0.7));
   const key = new THREE.DirectionalLight(0xffffff, 1.15);
   key.position.set(80, 160, 100);
@@ -38,21 +36,18 @@ export function createScene(container) {
   scene.add(new THREE.DirectionalLight(0x88aaff, 0.45).position.set(-90, 80, -70));
   scene.add(new THREE.HemisphereLight(0x8ab4f8, 0x3a2a10, 0.35));
 
-  // Machine bed UNDER the stock (stock bottom at Y=-20)
   const bed = new THREE.Mesh(
     new THREE.BoxGeometry(240, 10, 200),
     new THREE.MeshStandardMaterial({ color: 0x2a3038, metalness: 0.45, roughness: 0.55 })
   );
-  bed.position.set(50, -25, 40); // top face ≈ Y=-20
+  bed.position.set(50, -25, 40);
   bed.receiveShadow = true;
   scene.add(bed);
 
-  // Grid on top of bed (under stock)
   const grid = new THREE.GridHelper(220, 22, 0x404850, 0x1e242c);
   grid.position.set(50, -19.9, 40);
   scene.add(grid);
 
-  // Origin axes at work (0,0,0) = stock top corner
   const axes = new THREE.AxesHelper(25);
   axes.position.set(0, 0.2, 0);
   scene.add(axes);
@@ -65,7 +60,6 @@ export function createScene(container) {
     renderer.setSize(w, h);
   }
   window.addEventListener('resize', onResize);
-  // Ensure size after layout
   setTimeout(onResize, 50);
 
   return { scene, camera, renderer, controls, onResize };
@@ -111,33 +105,45 @@ export function setToolPosition(toolMesh, mx, my, mz) {
   toolMesh.position.set(mx, mz, my);
 }
 
+/**
+ * Toolpath colored by Z-level:
+ *  rapid  → red
+ *  Z >= 0  → cyan (above stock)
+ *  Z ~ -2  → yellow (shallow cut)
+ *  Z ~ -5  → orange (deeper)
+ *  Z < -5  → magenta (deep)
+ */
+function colorForZ(z, isRapid) {
+  if (isRapid) return 0xff4444;
+  if (z >= 0) return 0x44ddff;
+  if (z >= -3) return 0xffdd44;
+  if (z >= -6) return 0xff8844;
+  return 0xff44aa;
+}
+
 export function buildToolpathLines(moves) {
   const group = new THREE.Group();
   if (!moves || moves.length < 1) return group;
 
-  const rapid = [];
-  const feed = [];
+  const buckets = new Map();
   let prev = { x: 0, y: 0, z: 50 };
   for (const m of moves) {
-    const arr = m.type === 'rapid' ? rapid : feed;
-    // LineSegments pairs: start, end — Three (x,z,y)
+    const isRapid = m.type === 'rapid';
+    const col = colorForZ(Math.min(prev.z, m.z), isRapid);
+    if (!buckets.has(col)) buckets.set(col, []);
+    const arr = buckets.get(col);
     arr.push(prev.x, prev.z, prev.y, m.x, m.z, m.y);
     prev = m;
   }
 
-  function add(positions, color, opacity) {
-    if (positions.length < 6) return;
+  for (const [col, positions] of buckets) {
+    if (positions.length < 6) continue;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const mat = new THREE.LineBasicMaterial({
-      color,
-      transparent: opacity < 1,
-      opacity,
-      depthTest: true
-    });
-    group.add(new THREE.LineSegments(geo, mat));
+    group.add(new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.9 })
+    ));
   }
-  add(rapid, 0xff5555, 0.85);
-  add(feed, 0x44aaff, 0.95);
   return group;
 }
