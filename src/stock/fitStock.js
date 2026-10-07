@@ -5,8 +5,8 @@
 export function boundsFromMoves(moves, opts = {}) {
   const {
     padXY = 5,
-    padZTop = 0.5,
-    padZBot = 2,
+    padZTop = 3,
+    padZBot = 4,
     minSizeX = 20,
     minSizeY = 20,
     minSizeZ = 10,
@@ -59,7 +59,8 @@ export function boundsFromMoves(moves, opts = {}) {
   if (cutZs.length) {
     const minCut = Math.min(...cutZs);
     const maxCut = Math.max(...cutZs);
-    stockTop = Math.max(0, maxCut) + padZTop;
+    // Z0 is usually top of work / clamp — keep stock top at least padZTop above Z0
+    stockTop = Math.max(padZTop, maxCut + padZTop);
     stockBot = Math.min(minCut, 0) - padZBot;
   } else {
     stockTop = padZTop;
