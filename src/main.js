@@ -1,0 +1,285 @@
+import { VoxelStock } from './stock/VoxelStock.js';
+import { parseGCode } from './machine/Parser.js';
+import { createMachineState, updateWorkCoords } from './machine/MachineState.js';
+import { Simulator } from './sim/Simulator.js';
+import {
+  createScene,
+  createToolMesh,
+  setToolPosition,
+  buildToolpathLines
+} from './view/Scene.js';
+
+const SAMPLE = `; Contour + Pocket – Stock 100x80x20 | Tool D6
+; Z0 = top of stock
+G21 G90 G17 G54
+T1 M6
+S12000 M3
+G0 Z50
+G0 X0 Y0
+
+; Approach
+G0 X10 Y10
+G0 Z5
+G1 Z-2 F200
+
+; Outer contour
+G1 X90 F800
+G1 Y70
+G1 X10
+G1 Y10
+
+; Pocket
+G0 Z5
+G0 X25 Y25
+G1 Z-5 F150
+G1 X75 F600
+G1 Y55
+G1 X25
+G1 Y25
+
+; Finish
+G0 Z5
+G0 X20 Y20
+G1 Z-5 F120
+G1 X80 F400
+G1 Y60
+G1 X20
+G1 Y20
+
+G0 Z50
+G0 X0 Y0
+M5
+M30
+`;
+
+const container = document.getElementById('canvas-container');
+const { scene, camera, renderer, controls } = createScene(container);
+
+const stock = new VoxelStock({
+  sizeX: 100, sizeY: 80, sizeZ: 20, res: 1.0,
+  originX: 0, originY: 0, originZ: -20
+});
+stock.updateMesh(scene, true);
+
+const toolMesh = createToolMesh();
+scene.add(toolMesh);
+
+let toolpathGroup = null;
+const machine = createMachineState();
+
+const sim = new Simulator({
+  stock,
+  machine,
+  onUpdate: refreshUI,
+  onLine: highlightLine
+});
+
+// ---------- UI helpers ----------
+const $ = (id) => document.getElementById(id);
+
+function fmt(n) {
+  return (n ?? 0).toFixed(3);
+}
+
+function refreshUI() {
+  const w = updateWorkCoords(machine);
+  $('droX').textContent = fmt(w.x);
+  $('droY').textContent = fmt(w.y);
+  $('droZ').textContent = fmt(w.z);
+
+  const status = $('simStatus');
+  if (status) {
+    status.textContent = sim.playing ? 'RUN' : (sim.index >= sim.moves.length && sim.moves.length ? 'DONE' : 'IDLE');
+  }
+  const feedEl = $('simFeed');
+  if (feedEl) feedEl.textContent = Math.round(machine.feed || 0);
+  const spEl = $('simSpindle');
+  if (spEl) spEl.textContent = machine.spindle || 0;
+  const toolEl = $('simTool');
+  if (toolEl) toolEl.textContent = 'T' + (machine.tool || 1);
+  const lineEl = $('simLine');
+  if (lineEl) lineEl.textContent = sim.index + ' / ' + sim.moves.length;
+
+  const spindleState = $('spindleState');
+  if (spindleState) spindleState.textContent = machine.spindleOn ? 'ON' : 'OFF';
+  const stockLeft = $('stockLeft');
+  if (stockLeft) stockLeft.textContent = Math.round(stock.remainingRatio * 100) + '%';
+
+  const pct = sim.moves.length ? Math.min(100, (sim.index / sim.moves.length) * 100) : 0;
+  $('progressBar').style.width = pct + '%';
+  $('progressText').textContent = Math.round(pct) + '%';
+
+  const total = sim.totalTime || 1;
+  const elapsed = sim.elapsed || 0;
+  const fmtT = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  };
+  $('timeText').textContent = fmtT(elapsed) + ' / ' + fmtT(total);
+
+  setToolPosition(toolMesh, machine.x, machine.y, machine.z);
+
+  $('btnPlay').disabled = sim.playing;
+  $('btnPause').disabled = !sim.playing;
+  $('btnStop').disabled = !sim.playing && sim.index === 0;
+}
+
+function highlightLine(lineNum) {
+  const info = $('lineInfo');
+  if (info) info.textContent = lineNum != null ? 'Baris aktif: ' + lineNum : 'Baris aktif: —';
+  document.querySelectorAll('.gline').forEach((el) => {
+    el.classList.remove('active');
+    if (lineNum != null && +el.dataset.line === lineNum) {
+      el.classList.add('active');
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+function showLinesView(text) {
+  const lines = text.split(/\r?\n/);
+  const wrap = $('gcodeLines');
+  wrap.innerHTML = lines.map((t, i) =>
+    '<div class="gline" data-line="' + (i + 1) + '"><span class="ln">' + (i + 1) + '</span><span class="tx">' +
+    t.replace(/</g, '<') + '</span></div>'
+  ).join('');
+  $('gcodeInput').style.display = 'none';
+  wrap.style.display = 'block';
+}
+
+function showEditView() {
+  $('gcodeInput').style.display = 'block';
+  $('gcodeLines').style.display = 'none';
+}
+
+function loadProgram() {
+  const text = $('gcodeInput').value || SAMPLE;
+  const { moves, totalTime } = parseGCode(text);
+  sim.loadMoves(moves, totalTime);
+  $('lineCount').textContent = moves.length + ' gerakan';
+
+  if (toolpathGroup) {
+    scene.remove(toolpathGroup);
+    toolpathGroup = null;
+  }
+  toolpathGroup = buildToolpathLines(moves);
+  scene.add(toolpathGroup);
+
+  stock.reset();
+  stock.updateMesh(scene, true);
+  showLinesView(text);
+  refreshUI();
+}
+
+// ---------- Controls ----------
+$('btnLoad').addEventListener('click', loadProgram);
+$('btnExample').addEventListener('click', () => {
+  $('gcodeInput').value = SAMPLE;
+  showEditView();
+});
+$('btnClear').addEventListener('click', () => {
+  $('gcodeInput').value = '';
+  showEditView();
+});
+$('btnEditMode').addEventListener('click', showEditView);
+
+$('fileInput').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    $('gcodeInput').value = r.result;
+    showEditView();
+  };
+  r.readAsText(f);
+});
+
+$('btnPlay').addEventListener('click', () => { sim.play(); refreshUI(); });
+$('btnPause').addEventListener('click', () => { sim.pause(); refreshUI(); });
+$('btnStop').addEventListener('click', () => { sim.stop(); refreshUI(); });
+$('btnStep').addEventListener('click', () => { sim.step(); refreshUI(); });
+
+const chkSB = $('chkSingleBlock');
+if (chkSB) chkSB.addEventListener('change', (e) => { sim.singleBlock = e.target.checked; });
+const chkDR = $('chkDryRun');
+if (chkDR) chkDR.addEventListener('change', (e) => { sim.dryRun = e.target.checked; });
+
+const speedSlider = $('speedSlider');
+if (speedSlider) {
+  speedSlider.addEventListener('input', (e) => {
+    sim.simSpeed = +e.target.value;
+    const lab = $('speedLabel');
+    if (lab) lab.textContent = (+e.target.value).toFixed(1) + '×';
+  });
+}
+const feedOvr = $('feedOvrSlider') || $('feedOverride');
+if (feedOvr) {
+  feedOvr.addEventListener('input', (e) => {
+    sim.feedOvr = +e.target.value / 100;
+    const lab = $('feedOvrLabel') || $('feedVal');
+    if (lab) lab.textContent = e.target.value + '%';
+  });
+}
+const rapidOvr = $('rapidOvrSlider') || $('rapidOverride');
+if (rapidOvr) {
+  rapidOvr.addEventListener('input', (e) => {
+    sim.rapidOvr = +e.target.value / 100;
+    const lab = $('rapidOvrLabel') || $('rapidVal');
+    if (lab) lab.textContent = e.target.value + '%';
+  });
+}
+
+// View buttons
+$('btnResetView').addEventListener('click', () => {
+  camera.position.set(140, 120, 180);
+  controls.target.set(50, 5, 40);
+  controls.update();
+});
+$('btnTopView').addEventListener('click', () => {
+  camera.position.set(50, 200, 40);
+  controls.target.set(50, 0, 40);
+  controls.update();
+});
+$('btnIsoView').addEventListener('click', () => {
+  camera.position.set(140, 120, 180);
+  controls.target.set(50, 5, 40);
+  controls.update();
+});
+
+// Mode tabs
+document.querySelectorAll('.mode-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = $('simMode');
+    if (mode) mode.textContent = btn.dataset.mode.toUpperCase();
+  });
+});
+
+// Keyboard
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && e.target.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    if (sim.playing) sim.pause();
+    else sim.play();
+    refreshUI();
+  }
+});
+
+// ---------- Animation ----------
+let last = performance.now();
+function animate(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  sim.tick(dt);
+  stock.updateMesh(scene);
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+// Init
+$('gcodeInput').value = SAMPLE;
+loadProgram();
+requestAnimationFrame(animate);
