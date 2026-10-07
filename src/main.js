@@ -6,6 +6,7 @@ import { Simulator } from './sim/Simulator.js';
 import {
   createScene,
   createToolMesh,
+  setToolDiameter,
   setToolPosition,
   buildToolpathLines
 } from './view/Scene.js';
@@ -66,7 +67,7 @@ const stock = new VoxelStock({
 });
 stock.updateMesh(scene, true);
 
-const toolMesh = createToolMesh(6);
+const toolMesh = createToolMesh(6); // Ø12 default
 scene.add(toolMesh);
 
 let toolpathGroup = null;
@@ -92,6 +93,7 @@ let activeTool = 1;
 let droMode = 'work';
 let jogInc = 0.1;
 let currentMode = 'edit';
+let lastToolDia = 12;
 
 const sim = new Simulator({
   stock,
@@ -122,7 +124,6 @@ function rebuildTrail() {
   disposeGroup(trailGroup);
   trailGroup = null;
   if (!allMoves.length || sim.index <= 0) return;
-
   const done = allMoves.slice(0, sim.index);
   if (sim.playing && sim.index < allMoves.length) {
     done.push({
@@ -130,7 +131,6 @@ function rebuildTrail() {
       type: allMoves[sim.index].type
     });
   }
-
   trailGroup = buildToolpathLines(done, { rapidClearance: 15 });
   scene.add(trailGroup);
 }
@@ -141,7 +141,9 @@ function setGraphVisible(vis) {
   document.querySelectorAll('.sk[data-sk="f4"]').forEach((b) => {
     b.classList.toggle('active', graphVisible);
   });
-  if ($('sbMsg')) $('sbMsg').textContent = graphVisible ? 'GRAPH ON' : 'GRAPH OFF';
+  const lbl = $('sk4');
+  if (lbl) lbl.textContent = graphVisible ? 'GRAPH ON' : 'GRAPH';
+  if ($('sbMsg')) $('sbMsg').textContent = graphVisible ? 'GRAPH ON — path preview' : 'GRAPH OFF';
 }
 
 function applyDryRun(on) {
@@ -170,7 +172,6 @@ function updateActiveCodes() {
     chips.push('<span class="code-chip">F' + Math.round(machine.feed) + '</span>');
   }
   codes.innerHTML = chips.join('');
-
   const ti = $('activeToolInfo');
   if (ti) {
     const sp = machine.spindleOn
@@ -182,11 +183,8 @@ function updateActiveCodes() {
       '<span class="code-chip">D' + String(machine.tool || 1).padStart(2, '0') + '</span>' +
       sp;
   }
-
   if ($('hdrSpindle')) {
-    $('hdrSpindle').textContent = machine.spindleOn
-      ? 'S' + (machine.spindle || 0)
-      : 'S OFF';
+    $('hdrSpindle').textContent = machine.spindleOn ? 'S' + (machine.spindle || 0) : 'S OFF';
     $('hdrSpindle').style.color = machine.spindleOn ? '#3fb950' : '';
   }
 }
@@ -214,7 +212,6 @@ function refreshUI() {
     if ($('droY')) $('droY').textContent = fmt(machine.y);
     if ($('droZ')) $('droZ').textContent = fmt(machine.z);
   }
-
   if ($('simStatus')) {
     $('simStatus').textContent = sim.playing
       ? 'RUN'
@@ -226,11 +223,9 @@ function refreshUI() {
   if ($('stockLeft')) {
     $('stockLeft').textContent = Math.round(stock.remainingRatio * 100) + '%';
   }
-
   const pct = sim.moves.length ? Math.min(100, (sim.index / sim.moves.length) * 100) : 0;
   if ($('progressBar')) $('progressBar').style.width = pct + '%';
   if ($('progressText')) $('progressText').textContent = Math.round(pct) + '%';
-
   const total = sim.totalTime || 1;
   const elapsed = sim.elapsed || 0;
   const fmtT = (s) => {
@@ -242,6 +237,10 @@ function refreshUI() {
   if ($('hdrTime')) $('hdrTime').textContent = fmtT(elapsed);
 
   setToolPosition(toolMesh, machine.x, machine.y, machine.z);
+  if (machine.toolDiameter && machine.toolDiameter !== lastToolDia) {
+    lastToolDia = machine.toolDiameter;
+    setToolDiameter(toolMesh, lastToolDia);
+  }
   updateActiveCodes();
   updateStatusBar();
 
@@ -270,7 +269,7 @@ function showLinesView(text) {
   if (!wrap) return;
   wrap.innerHTML = lines.map((t, i) =>
     '<div class="gline" data-line="' + (i + 1) + '"><span class="ln">' + (i + 1) +
-    '</span><span class="tx">' + t.replace(/</g, '<') + '</span></div>'
+    '</span><span class="tx">' + t.replace(/</g, '&lt;') + '</span></div>'
   ).join('');
   if ($('gcodeInput')) $('gcodeInput').style.display = 'none';
   wrap.style.display = 'block';
@@ -573,7 +572,10 @@ if ($('btnApplyTool')) {
     machine.tool = activeTool;
     machine.toolLength = t.length;
     machine.toolDiameter = t.dia;
+    setToolDiameter(toolMesh, t.dia);
+    lastToolDia = t.dia;
     markTrain('toollength');
+    if ($('sbMsg')) $('sbMsg').textContent = 'Tool T' + activeTool + ' Ø' + t.dia + ' applied';
     refreshUI();
   });
 }
@@ -592,9 +594,7 @@ document.querySelectorAll('.jog-btn').forEach((btn) => {
 });
 if ($('btnJogHome')) {
   $('btnJogHome').addEventListener('click', () => {
-    machine.x = 0;
-    machine.y = 0;
-    machine.z = 50;
+    machine.x = 0; machine.y = 0; machine.z = 50;
     refreshUI();
   });
 }
@@ -687,12 +687,9 @@ window.addEventListener('keydown', (e) => {
   }
   if (currentMode === 'setup') {
     const map = {
-      ArrowLeft: ['x', -1],
-      ArrowRight: ['x', 1],
-      ArrowDown: ['y', -1],
-      ArrowUp: ['y', 1],
-      PageDown: ['z', -1],
-      PageUp: ['z', 1]
+      ArrowLeft: ['x', -1], ArrowRight: ['x', 1],
+      ArrowDown: ['y', -1], ArrowUp: ['y', 1],
+      PageDown: ['z', -1], PageUp: ['z', 1]
     };
     if (map[e.code]) {
       e.preventDefault();
@@ -719,6 +716,7 @@ function animate(now) {
 }
 
 document.querySelectorAll('.sk[data-sk="f4"]').forEach((b) => b.classList.add('active'));
+if ($('sk4')) $('sk4').textContent = 'GRAPH ON';
 if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
 loadProgram();
 requestAnimationFrame(animate);
