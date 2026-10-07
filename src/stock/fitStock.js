@@ -1,11 +1,11 @@
 /**
  * Compute stock bounds from toolpath moves for auto-fit.
- * Robust to real machine programs: ignores rapid retracts, G28, outliers.
+ * Stock TOP is at Z=0 (work zero / top of part).
  */
 export function boundsFromMoves(moves, opts = {}) {
   const {
     padXY = 5,
-    padZTop = 3,
+    padZTop = 0,
     padZBot = 4,
     minSizeX = 20,
     minSizeY = 20,
@@ -58,12 +58,10 @@ export function boundsFromMoves(moves, opts = {}) {
   let stockTop, stockBot;
   if (cutZs.length) {
     const minCut = Math.min(...cutZs);
-    // Stock TOP always near Z0 (part zero surface) + small pad
-    stockTop = Math.max(padZTop, 0 + padZTop);
-    // Bottom covers deepest cut + pad (tool enters material — correct)
+    stockTop = 0;
     stockBot = Math.min(minCut, 0) - padZBot;
   } else {
-    stockTop = padZTop;
+    stockTop = 0;
     stockBot = -defaultZ;
   }
 

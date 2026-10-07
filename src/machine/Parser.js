@@ -1,12 +1,11 @@
 /**
  * G-code parser → motion moves.
- * Supports: G0/G1 modal, multi-G lines, G90/G91, M30 stop,
- * M97 Pnn Lkk local subprograms (Haas), trailing decimals.
+ * Supports: G0/G1 modal, multi-G lines, G90/G91, G54–G59 WCS,
+ * M30 stop, M97 Pnn Lkk local subprograms (Haas), bare decimals (Z. → 0).
  */
 export function parseGCode(text) {
   const rawLines = text.split(/\r?\n/);
 
-  // ---- Pass 1: index N-label subprograms (body until M99) ----
   const subs = new Map();
   let currentSub = null;
   let currentBody = [];
@@ -38,9 +37,9 @@ export function parseGCode(text) {
   }
   if (currentSub != null) subs.set(currentSub, currentBody);
 
-  // ---- Pass 2: walk main program, expand M97 ----
   const mainBlocks = [];
   let inSubDef = false;
+  const alarms = [];
 
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i];
@@ -76,15 +75,29 @@ export function parseGCode(text) {
     mainBlocks.push({ raw, line, lineNum: i + 1 });
   }
 
-  return blocksToMoves(mainBlocks);
+  return blocksToMoves(mainBlocks, alarms);
 }
 
-function blocksToMoves(blocks) {
+function parseAxisNum(numStr) {
+  if (numStr === '' || numStr === '+' || numStr === '-' || numStr === '.') return 0;
+  if (numStr === '+.' || numStr === '-.') return 0;
+  const val = parseFloat(numStr);
+  return Number.isNaN(val) ? null : val;
+}
+
+const KNOWN_G = new Set([
+  0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 28, 40, 41, 42, 43, 49,
+  54, 55, 56, 57, 58, 59, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
+  90, 91, 98, 99
+]);
+
+function blocksToMoves(blocks, alarms = []) {
   const result = [];
   let x = 0, y = 0, z = 50;
   let f = 500, spindle = 0, tool = 0;
   let absolute = true;
   let motion = 0;
+  let wcs = 'G54';
 
   for (const blk of blocks) {
     let line = blk.line.replace(/^N\d+\s*/i, '');
@@ -98,11 +111,14 @@ function blocksToMoves(blocks) {
     for (const t of tokens) {
       const letter = t[0].toUpperCase();
       const numStr = t.slice(1);
-      if (numStr === '' || numStr === '+' || numStr === '-') continue;
-      const val = parseFloat(numStr);
-      if (Number.isNaN(val)) continue;
+      const val = parseAxisNum(numStr);
+      if (val === null && letter !== 'G' && letter !== 'M') continue;
       switch (letter) {
-        case 'G': gCodes.push(val); break;
+        case 'G': {
+          const g = val === null ? 0 : val;
+          gCodes.push(g);
+          break;
+        }
         case 'M': m = val; break;
         case 'X': nx = val; break;
         case 'Y': ny = val; break;
@@ -119,6 +135,10 @@ function blocksToMoves(blocks) {
       else if (g === 91) absolute = false;
       else if (g === 0) motion = 0;
       else if (g === 1 || g === 2 || g === 3) motion = 1;
+      else if (g >= 54 && g <= 59) wcs = 'G' + g;
+      else if (!KNOWN_G.has(g) && Number.isInteger(g)) {
+        alarms.push({ line: blk.lineNum, code: 'G' + g, msg: 'Unknown G-code G' + g });
+      }
     }
 
     if (nf !== null) f = nf;
@@ -143,7 +163,8 @@ function blocksToMoves(blocks) {
 
     result.push({
       x: tx, y: ty, z: tz, f, type,
-      line: blk.lineNum, raw: (blk.raw || '').trim(), spindle, tool, m
+      line: blk.lineNum, raw: (blk.raw || '').trim(),
+      spindle, tool, m, wcs
     });
 
     x = tx; y = ty; z = tz;
@@ -159,5 +180,5 @@ function blocksToMoves(blocks) {
     px = mv.x; py = mv.y; pz = mv.z;
   }
 
-  return { moves: result, totalTime };
+  return { moves: result, totalTime, alarms };
 }
