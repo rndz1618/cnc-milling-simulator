@@ -17,7 +17,7 @@
 <body>
   <header>
     <div class="hdr-left">
-      <h1>CNC Milling Simulator <span class="badge">v0.6 Training</span></h1>
+      <h1>CNC Milling Simulator <span class="badge">v0.6.1 Auto-fit</span></h1>
       <div class="mode-tabs">
         <button class="mode-tab" data-mode="setup">SETUP</button>
         <button class="mode-tab active" data-mode="edit">EDIT</button>
@@ -52,6 +52,11 @@
             File
             <input type="file" id="fileInput" accept=".nc,.gcode,.tap,.cnc,.txt" hidden />
           </label>
+        </div>
+        <div class="stock-fit-row">
+          <label class="chk"><input type="checkbox" id="chkAutoFit" checked /> Auto-fit stock</label>
+          <span class="stock-size" id="stockSizeLabel">100×80×20</span>
+          <button class="btn btn-sm" id="btnFitStock">Fit Now</button>
         </div>
       </div>
 
@@ -257,7 +262,6 @@
     </div>
   </div>
 
-  <!-- Soft keys (Haas F1–F8 style) -->
   <div class="softkeys" id="softkeys">
     <button class="sk" data-sk="f1">F1<br/><span class="sk-lbl" id="sk1">OFFSET</span></button>
     <button class="sk" data-sk="f2">F2<br/><span class="sk-lbl" id="sk2">CURNT CMDS</span></button>
@@ -269,7 +273,6 @@
     <button class="sk" data-sk="f8">F8<br/><span class="sk-lbl" id="sk8">DRY RUN</span></button>
   </div>
 
-  <!-- Training scenario overlay -->
   <div class="train-overlay" id="trainOverlay" style="display:none" aria-hidden="true">
     <div class="train-panel">
       <div class="train-hdr">
