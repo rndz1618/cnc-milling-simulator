@@ -1,7 +1,7 @@
 /**
  * Playback engine: advances moves, cuts stock, syncs line highlight.
- * Program coordinates = world/display coordinates (tool stays on toolpath).
- * G54 is stored for DRO Machine mode only: machine = work + g54.
+ * Program coordinates = WORK coordinates (tool stays on toolpath).
+ * G54 is for DRO Machine mode only: machine = work + g54.
  */
 export class Simulator {
   constructor({ stock, machine, onUpdate, onLine }) {
@@ -87,7 +87,7 @@ export class Simulator {
   }
 
   _applyMove(m) {
-    // Program coords = display/work coords (aligned with stock & toolpath)
+    // Program coords = WORK coords (stock & toolpath live in work space)
     this.machine.x = m.x;
     this.machine.y = m.y;
     this.machine.z = m.z;
@@ -97,6 +97,7 @@ export class Simulator {
       this.machine.spindleOn = true;
     }
     if (m.tool) this.machine.tool = m.tool;
+    if (m.wcs) this.machine.activeWcs = m.wcs;
   }
 
   tick(dt) {
@@ -138,6 +139,7 @@ export class Simulator {
     this.machine.y = y1;
     this.machine.z = z1;
     this.machine.feed = feed;
+    if (move.wcs) this.machine.activeWcs = move.wcs;
 
     if (!this.dryRun && move.type === 'feed') {
       this.stock.cutSegment(x0, y0, z0, x1, y1, z1, this.machine.toolDiameter / 2);
