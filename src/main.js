@@ -54,7 +54,7 @@ M30
 `;
 
 const container = document.getElementById('canvas-container');
-const { scene, camera, renderer, controls } = createScene(container);
+const { scene, camera, renderer, controls, bed, grid } = createScene(container);
 
 const stock = new VoxelStock({
   sizeX: 100, sizeY: 80, sizeZ: 20, res: 1.0,
@@ -236,13 +236,19 @@ function loadProgram() {
   toolpathGroup = buildToolpathLines(moves);
   scene.add(toolpathGroup);
 
-  // Auto-fit stock to toolpath bounds
   const autoFit = $('chkAutoFit') && $('chkAutoFit').checked;
   if (autoFit && moves.length) {
     const toolR = (machine.toolDiameter || 6) / 2;
     const b = boundsFromMoves(moves, { toolRadius: toolR });
     if (b) {
       stock.resize(b, scene);
+      if (bed) {
+        bed.position.set(b.centerX, b.originZ - 5, b.centerY);
+        bed.scale.set(Math.max(1, b.sizeX / 240), 1, Math.max(1, b.sizeY / 200));
+      }
+      if (grid) {
+        grid.position.set(b.centerX, b.originZ + 0.1, b.centerY);
+      }
       controls.target.set(b.centerX, b.centerZ, b.centerY);
       const span = Math.max(b.sizeX, b.sizeY, b.sizeZ * 2);
       camera.position.set(
@@ -259,6 +265,11 @@ function loadProgram() {
       sizeX: 100, sizeY: 80, sizeZ: 20, res: 1.0,
       originX: 0, originY: 0, originZ: -20
     }, scene);
+    if (bed) {
+      bed.position.set(50, -25, 40);
+      bed.scale.set(1, 1, 1);
+    }
+    if (grid) grid.position.set(50, -19.9, 40);
     if ($('stockSizeLabel')) $('stockSizeLabel').textContent = '100×80×20';
   }
 
