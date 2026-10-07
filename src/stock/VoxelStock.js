@@ -60,6 +60,25 @@ export class VoxelStock {
     this.fill();
   }
 
+  /**
+   * Rebuild voxel grid with new dimensions (auto-fit stock to toolpath).
+   */
+  resize({ sizeX, sizeY, sizeZ, originX, originY, originZ, res }, scene) {
+    this.sizeX = sizeX;
+    this.sizeY = sizeY;
+    this.sizeZ = sizeZ;
+    this.res = res ?? this.res;
+    this.originX = originX;
+    this.originY = originY;
+    this.originZ = originZ;
+    this.nx = Math.max(1, Math.ceil(this.sizeX / this.res));
+    this.ny = Math.max(1, Math.ceil(this.sizeY / this.res));
+    this.nz = Math.max(1, Math.ceil(this.sizeZ / this.res));
+    this.grid = new Uint8Array(this.nx * this.ny * this.nz);
+    this.fill();
+    if (scene) this.updateMesh(scene, true);
+  }
+
   worldToVoxel(x, y, z) {
     const ix = Math.floor((x - this.originX) / this.res);
     const iy = Math.floor((y - this.originY) / this.res);
@@ -120,10 +139,6 @@ export class VoxelStock {
     return changed;
   }
 
-  /**
-   * Outer faces of the original bounding box = raw brass.
-   * Faces exposed by cutting (neighbor empty but still inside stock AABB) = machined grey.
-   */
   buildGeometry() {
     const positions = [];
     const normals = [];
@@ -140,7 +155,7 @@ export class VoxelStock {
       { d: [1, 0, 0], n: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
       { d: [-1, 0, 0], n: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
       { d: [0, 1, 0], n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-      { d: [0, -1, 0], n: [0, -1, 0], u: [1, 0, 0], v: [0, 1, 0] },
+      { d: [0, -1, 0], n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
       { d: [0, 0, 1], n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
       { d: [0, 0, -1], n: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] }
     ];
@@ -156,8 +171,6 @@ export class VoxelStock {
             const niz = iz + f.d[2];
             if (isSolid(nix, niy, niz)) continue;
 
-            // Neighbor outside original stock AABB → raw outer surface
-            // Neighbor inside AABB but empty → cut / machined surface
             const outsideAABB = !this.inBounds(nix, niy, niz);
             const col = outsideAABB ? COLOR_RAW : COLOR_CUT;
 
