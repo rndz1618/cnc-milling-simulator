@@ -4,8 +4,8 @@
  */
 import * as THREE from 'three';
 
-const COLOR_RAW = [0.91, 0.72, 0.29];       // brass stock
-const COLOR_CUT = [0.45, 0.48, 0.52];       // machined steel-grey
+const COLOR_RAW = [0.96, 0.78, 0.32];       // brighter brass stock
+const COLOR_CUT = [0.55, 0.58, 0.62];       // lighter machined grey (clear contrast)
 
 export class VoxelStock {
   constructor({
@@ -33,10 +33,12 @@ export class VoxelStock {
     this.mesh = null;
     this.material = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      metalness: 0.25,
-      roughness: 0.5,
+      metalness: 0.18,
+      roughness: 0.42,
       flatShading: true,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
+      emissive: new THREE.Color(0x1a1208),
+      emissiveIntensity: 0.12
     });
     this._dirty = true;
     this._lastRebuild = 0;
@@ -138,7 +140,7 @@ export class VoxelStock {
       { d: [1, 0, 0], n: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
       { d: [-1, 0, 0], n: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
       { d: [0, 1, 0], n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-      { d: [0, -1, 0], n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
+      { d: [0, -1, 0], n: [0, -1, 0], u: [1, 0, 0], v: [0, 1, 0] },
       { d: [0, 0, 1], n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
       { d: [0, 0, -1], n: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] }
     ];
