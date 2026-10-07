@@ -74,7 +74,6 @@ const sim = new Simulator({
   onLine: highlightLine
 });
 
-// ---------- UI helpers ----------
 const $ = (id) => document.getElementById(id);
 
 function fmt(n) {
@@ -83,31 +82,24 @@ function fmt(n) {
 
 function refreshUI() {
   const w = updateWorkCoords(machine);
-  $('droX').textContent = fmt(w.x);
-  $('droY').textContent = fmt(w.y);
-  $('droZ').textContent = fmt(w.z);
+  if ($('droX')) $('droX').textContent = fmt(w.x);
+  if ($('droY')) $('droY').textContent = fmt(w.y);
+  if ($('droZ')) $('droZ').textContent = fmt(w.z);
 
   const status = $('simStatus');
   if (status) {
     status.textContent = sim.playing ? 'RUN' : (sim.index >= sim.moves.length && sim.moves.length ? 'DONE' : 'IDLE');
   }
-  const feedEl = $('simFeed');
-  if (feedEl) feedEl.textContent = Math.round(machine.feed || 0);
-  const spEl = $('simSpindle');
-  if (spEl) spEl.textContent = machine.spindle || 0;
-  const toolEl = $('simTool');
-  if (toolEl) toolEl.textContent = 'T' + (machine.tool || 1);
-  const lineEl = $('simLine');
-  if (lineEl) lineEl.textContent = sim.index + ' / ' + sim.moves.length;
-
-  const spindleState = $('spindleState');
-  if (spindleState) spindleState.textContent = machine.spindleOn ? 'ON' : 'OFF';
-  const stockLeft = $('stockLeft');
-  if (stockLeft) stockLeft.textContent = Math.round(stock.remainingRatio * 100) + '%';
+  if ($('simFeed')) $('simFeed').textContent = Math.round(machine.feed || 0);
+  if ($('simSpindle')) $('simSpindle').textContent = machine.spindle || 0;
+  if ($('simTool')) $('simTool').textContent = 'T' + (machine.tool || 1);
+  if ($('simLine')) $('simLine').textContent = sim.index + ' / ' + sim.moves.length;
+  if ($('spindleState')) $('spindleState').textContent = machine.spindleOn ? 'ON' : 'OFF';
+  if ($('stockLeft')) $('stockLeft').textContent = Math.round(stock.remainingRatio * 100) + '%';
 
   const pct = sim.moves.length ? Math.min(100, (sim.index / sim.moves.length) * 100) : 0;
-  $('progressBar').style.width = pct + '%';
-  $('progressText').textContent = Math.round(pct) + '%';
+  if ($('progressBar')) $('progressBar').style.width = pct + '%';
+  if ($('progressText')) $('progressText').textContent = Math.round(pct) + '%';
 
   const total = sim.totalTime || 1;
   const elapsed = sim.elapsed || 0;
@@ -116,13 +108,13 @@ function refreshUI() {
     const sec = Math.floor(s % 60);
     return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
   };
-  $('timeText').textContent = fmtT(elapsed) + ' / ' + fmtT(total);
+  if ($('timeText')) $('timeText').textContent = fmtT(elapsed) + ' / ' + fmtT(total);
 
   setToolPosition(toolMesh, machine.x, machine.y, machine.z);
 
-  $('btnPlay').disabled = sim.playing;
-  $('btnPause').disabled = !sim.playing;
-  $('btnStop').disabled = !sim.playing && sim.index === 0;
+  if ($('btnPlay')) $('btnPlay').disabled = sim.playing;
+  if ($('btnPause')) $('btnPause').disabled = !sim.playing;
+  if ($('btnStop')) $('btnStop').disabled = !sim.playing && sim.index === 0;
 }
 
 function highlightLine(lineNum) {
@@ -140,27 +132,32 @@ function highlightLine(lineNum) {
 function showLinesView(text) {
   const lines = text.split(/\r?\n/);
   const wrap = $('gcodeLines');
+  if (!wrap) return;
   wrap.innerHTML = lines.map((t, i) =>
     '<div class="gline" data-line="' + (i + 1) + '"><span class="ln">' + (i + 1) + '</span><span class="tx">' +
     t.replace(/</g, '<') + '</span></div>'
   ).join('');
-  $('gcodeInput').style.display = 'none';
+  if ($('gcodeInput')) $('gcodeInput').style.display = 'none';
   wrap.style.display = 'block';
 }
 
 function showEditView() {
-  $('gcodeInput').style.display = 'block';
-  $('gcodeLines').style.display = 'none';
+  if ($('gcodeInput')) $('gcodeInput').style.display = 'block';
+  if ($('gcodeLines')) $('gcodeLines').style.display = 'none';
 }
 
 function loadProgram() {
-  const text = $('gcodeInput').value || SAMPLE;
+  const text = ($('gcodeInput') && $('gcodeInput').value) || SAMPLE;
   const { moves, totalTime } = parseGCode(text);
   sim.loadMoves(moves, totalTime);
-  $('lineCount').textContent = moves.length + ' gerakan';
+  if ($('lineCount')) $('lineCount').textContent = moves.length + ' gerakan';
 
   if (toolpathGroup) {
     scene.remove(toolpathGroup);
+    toolpathGroup.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
     toolpathGroup = null;
   }
   toolpathGroup = buildToolpathLines(moves);
@@ -173,32 +170,38 @@ function loadProgram() {
 }
 
 // ---------- Controls ----------
-$('btnLoad').addEventListener('click', loadProgram);
-$('btnExample').addEventListener('click', () => {
-  $('gcodeInput').value = SAMPLE;
+if ($('btnLoad')) $('btnLoad').addEventListener('click', loadProgram);
+if ($('btnExample')) $('btnExample').addEventListener('click', () => {
+  if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
   showEditView();
 });
-$('btnClear').addEventListener('click', () => {
-  $('gcodeInput').value = '';
+if ($('btnClear')) $('btnClear').addEventListener('click', () => {
+  if ($('gcodeInput')) $('gcodeInput').value = '';
   showEditView();
 });
-$('btnEditMode').addEventListener('click', showEditView);
+if ($('btnEditMode')) $('btnEditMode').addEventListener('click', showEditView);
 
-$('fileInput').addEventListener('change', (e) => {
+if ($('fileInput')) $('fileInput').addEventListener('change', (e) => {
   const f = e.target.files[0];
   if (!f) return;
   const r = new FileReader();
   r.onload = () => {
-    $('gcodeInput').value = r.result;
+    if ($('gcodeInput')) $('gcodeInput').value = r.result;
     showEditView();
   };
   r.readAsText(f);
 });
 
-$('btnPlay').addEventListener('click', () => { sim.play(); refreshUI(); });
-$('btnPause').addEventListener('click', () => { sim.pause(); refreshUI(); });
-$('btnStop').addEventListener('click', () => { sim.stop(); refreshUI(); });
-$('btnStep').addEventListener('click', () => { sim.step(); refreshUI(); });
+if ($('btnPlay')) $('btnPlay').addEventListener('click', () => { sim.play(); refreshUI(); });
+if ($('btnPause')) $('btnPause').addEventListener('click', () => { sim.pause(); refreshUI(); });
+if ($('btnStop')) $('btnStop').addEventListener('click', () => { sim.stop(); refreshUI(); });
+if ($('btnStep')) $('btnStep').addEventListener('click', () => { sim.step(); refreshUI(); });
+if ($('btnReset')) $('btnReset').addEventListener('click', () => {
+  sim.stop();
+  stock.reset();
+  stock.updateMesh(scene, true);
+  refreshUI();
+});
 
 const chkSB = $('chkSingleBlock');
 if (chkSB) chkSB.addEventListener('change', (e) => { sim.singleBlock = e.target.checked; });
@@ -230,24 +233,41 @@ if (rapidOvr) {
   });
 }
 
-// View buttons
-$('btnResetView').addEventListener('click', () => {
-  camera.position.set(140, 120, 180);
-  controls.target.set(50, 5, 40);
-  controls.update();
+// G54 / tool length
+['g54x', 'g54y', 'g54z'].forEach((id, i) => {
+  const el = $(id);
+  if (!el) return;
+  const key = ['x', 'y', 'z'][i];
+  el.addEventListener('change', () => {
+    machine.g54[key] = parseFloat(el.value) || 0;
+    refreshUI();
+  });
 });
-$('btnTopView').addEventListener('click', () => {
-  camera.position.set(50, 200, 40);
+const toolLen = $('toolLen');
+if (toolLen) {
+  toolLen.addEventListener('change', () => {
+    machine.toolLength = parseFloat(toolLen.value) || 0;
+    refreshUI();
+  });
+}
+
+// View buttons – frame the stock
+if ($('btnResetView')) $('btnResetView').addEventListener('click', () => {
+  camera.position.set(160, 110, 200);
   controls.target.set(50, 0, 40);
   controls.update();
 });
-$('btnIsoView').addEventListener('click', () => {
-  camera.position.set(140, 120, 180);
-  controls.target.set(50, 5, 40);
+if ($('btnTopView')) $('btnTopView').addEventListener('click', () => {
+  camera.position.set(50, 180, 40);
+  controls.target.set(50, 0, 40);
+  controls.update();
+});
+if ($('btnIsoView')) $('btnIsoView').addEventListener('click', () => {
+  camera.position.set(160, 110, 200);
+  controls.target.set(50, 0, 40);
   controls.update();
 });
 
-// Mode tabs
 document.querySelectorAll('.mode-tab').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.mode-tab').forEach((b) => b.classList.remove('active'));
@@ -257,9 +277,8 @@ document.querySelectorAll('.mode-tab').forEach((btn) => {
   });
 });
 
-// Keyboard
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && e.target.tagName !== 'TEXTAREA') {
+  if (e.code === 'Space' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'INPUT') {
     e.preventDefault();
     if (sim.playing) sim.pause();
     else sim.play();
@@ -267,7 +286,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// ---------- Animation ----------
 let last = performance.now();
 function animate(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -279,7 +297,6 @@ function animate(now) {
   requestAnimationFrame(animate);
 }
 
-// Init
-$('gcodeInput').value = SAMPLE;
+if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
 loadProgram();
 requestAnimationFrame(animate);
