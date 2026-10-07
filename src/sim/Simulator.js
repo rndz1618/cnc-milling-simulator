@@ -1,5 +1,7 @@
 /**
  * Playback engine: advances moves, cuts stock, syncs line highlight.
+ * Program coordinates = world/display coordinates (tool stays on toolpath).
+ * G54 is stored for DRO Machine mode only: machine = work + g54.
  */
 export class Simulator {
   constructor({ stock, machine, onUpdate, onLine }) {
@@ -11,7 +13,7 @@ export class Simulator {
     this.moves = [];
     this.totalTime = 0;
     this.index = 0;
-    this.progress = 0; // 0..1 within current move
+    this.progress = 0;
     this.elapsed = 0;
     this.playing = false;
     this.singleBlock = false;
@@ -85,9 +87,10 @@ export class Simulator {
   }
 
   _applyMove(m) {
-    this.machine.x = m.x + this.machine.g54.x;
-    this.machine.y = m.y + this.machine.g54.y;
-    this.machine.z = m.z + this.machine.g54.z + this.machine.toolLength;
+    // Program coords = display/work coords (aligned with stock & toolpath)
+    this.machine.x = m.x;
+    this.machine.y = m.y;
+    this.machine.z = m.z;
     this.machine.feed = m.f || 0;
     if (m.spindle) {
       this.machine.spindle = m.spindle;
@@ -96,9 +99,6 @@ export class Simulator {
     if (m.tool) this.machine.tool = m.tool;
   }
 
-  /**
-   * @param {number} dt seconds
-   */
   tick(dt) {
     if (!this.playing || this.singleBlock) return;
     if (this.index >= this.moves.length) {
@@ -134,10 +134,9 @@ export class Simulator {
     const y1 = prev.y + dy * t1;
     const z1 = prev.z + dz * t1;
 
-    // Interpolate machine position
-    this.machine.x = x1 + this.machine.g54.x;
-    this.machine.y = y1 + this.machine.g54.y;
-    this.machine.z = z1 + this.machine.g54.z + this.machine.toolLength;
+    this.machine.x = x1;
+    this.machine.y = y1;
+    this.machine.z = z1;
     this.machine.feed = feed;
 
     if (!this.dryRun && move.type === 'feed') {
