@@ -17,7 +17,7 @@
 <body>
   <header>
     <div class="hdr-left">
-      <h1>CNC Milling Simulator <span class="badge">v0.5.1 Bright</span></h1>
+      <h1>CNC Milling Simulator <span class="badge">v0.6 Training</span></h1>
       <div class="mode-tabs">
         <button class="mode-tab" data-mode="setup">SETUP</button>
         <button class="mode-tab active" data-mode="edit">EDIT</button>
@@ -257,11 +257,81 @@
     </div>
   </div>
 
+  <!-- Soft keys (Haas F1–F8 style) -->
+  <div class="softkeys" id="softkeys">
+    <button class="sk" data-sk="f1">F1<br/><span class="sk-lbl" id="sk1">OFFSET</span></button>
+    <button class="sk" data-sk="f2">F2<br/><span class="sk-lbl" id="sk2">CURNT CMDS</span></button>
+    <button class="sk" data-sk="f3">F3<br/><span class="sk-lbl" id="sk3">ALARM</span></button>
+    <button class="sk" data-sk="f4">F4<br/><span class="sk-lbl" id="sk4">GRAPH</span></button>
+    <button class="sk" data-sk="f5">F5<br/><span class="sk-lbl" id="sk5">TRAINING</span></button>
+    <button class="sk" data-sk="f6">F6<br/><span class="sk-lbl" id="sk6">COOLANT</span></button>
+    <button class="sk" data-sk="f7">F7<br/><span class="sk-lbl" id="sk7">SINGLE BLK</span></button>
+    <button class="sk" data-sk="f8">F8<br/><span class="sk-lbl" id="sk8">DRY RUN</span></button>
+  </div>
+
+  <!-- Training scenario overlay -->
+  <div class="train-overlay" id="trainOverlay" style="display:none" aria-hidden="true">
+    <div class="train-panel">
+      <div class="train-hdr">
+        <span>TRAINING SCENARIO — Operator Procedure</span>
+        <button class="btn btn-sm" id="btnTrainClose">✕</button>
+      </div>
+      <div class="train-body">
+        <p class="train-intro">Ikuti urutan prosedur setup operator Haas. Centang otomatis saat langkah selesai.</p>
+        <ol class="train-steps" id="trainSteps">
+          <li data-step="partzero" class="train-step">
+            <span class="train-check">☐</span>
+            <div class="train-step-body">
+              <strong>1. Part Zero (G54)</strong>
+              <span class="train-desc">SETUP → WORK → set G54 (ZERO di sudut part) → Apply Active WCS</span>
+              <button class="btn btn-sm btn-primary train-goto" data-goto="partzero">Buka WORK</button>
+            </div>
+          </li>
+          <li data-step="toollength" class="train-step">
+            <span class="train-check">☐</span>
+            <div class="train-step-body">
+              <strong>2. Tool Length / Diameter</strong>
+              <span class="train-desc">SETUP → TOOL → isi Length & Dia → Apply Active Tool</span>
+              <button class="btn btn-sm btn-primary train-goto" data-goto="toollength">Buka TOOL</button>
+            </div>
+          </li>
+          <li data-step="dryrun" class="train-step">
+            <span class="train-check">☐</span>
+            <div class="train-step-body">
+              <strong>3. Dry Run</strong>
+              <span class="train-desc">F8 / centang Dry Run → OPERATION → Cycle Start (tanpa memotong material)</span>
+              <button class="btn btn-sm btn-primary train-goto" data-goto="dryrun">Aktifkan Dry Run</button>
+            </div>
+          </li>
+          <li data-step="cyclestart" class="train-step">
+            <span class="train-check">☐</span>
+            <div class="train-step-body">
+              <strong>4. Cycle Start (produksi)</strong>
+              <span class="train-desc">Matikan Dry Run → Load program → Cycle Start (Space)</span>
+              <button class="btn btn-sm btn-primary train-goto" data-goto="cyclestart">Ke OPERATION</button>
+            </div>
+          </li>
+        </ol>
+        <div class="train-progress">
+          <div class="train-progress-bar"><div class="train-progress-fill" id="trainProgressFill"></div></div>
+          <span id="trainProgressText">0 / 4 langkah</span>
+        </div>
+        <div class="train-actions">
+          <button class="btn" id="btnTrainReset">Reset Checklist</button>
+          <button class="btn btn-primary" id="btnTrainStart">Mulai dari Langkah 1</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <footer class="status-bar">
     <div class="sb-left">
-      <span class="sb-item" id="sbAlarm">NO ALARMS</span>
+      <span class="sb-item ok" id="sbAlarm">NO ALARMS</span>
       <span class="sb-sep">|</span>
       <span class="sb-item" id="sbFlags">—</span>
+    </div>
+    <div class="sb-center">
+      <span class="sb-item" id="sbMsg">Ready · F5 = Training</span>
     </div>
     <div class="sb-right">
       <span class="sb-item">Space = Cycle Start / Feed Hold</span>
@@ -271,5 +341,6 @@
   </footer>
 
   <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/v06.js"></script>
 </body>
 </html>
