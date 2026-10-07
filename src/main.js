@@ -1,4 +1,5 @@
 import { VoxelStock } from './stock/VoxelStock.js';
+import { boundsFromMoves, formatStockSize } from './stock/fitStock.js';
 import { parseGCode } from './machine/Parser.js';
 import { createMachineState, updateWorkCoords } from './machine/MachineState.js';
 import { Simulator } from './sim/Simulator.js';
@@ -235,6 +236,32 @@ function loadProgram() {
   toolpathGroup = buildToolpathLines(moves);
   scene.add(toolpathGroup);
 
+  // Auto-fit stock to toolpath bounds
+  const autoFit = $('chkAutoFit') && $('chkAutoFit').checked;
+  if (autoFit && moves.length) {
+    const toolR = (machine.toolDiameter || 6) / 2;
+    const b = boundsFromMoves(moves, { toolRadius: toolR });
+    if (b) {
+      stock.resize(b, scene);
+      controls.target.set(b.centerX, b.centerZ, b.centerY);
+      const span = Math.max(b.sizeX, b.sizeY, b.sizeZ * 2);
+      camera.position.set(
+        b.centerX + span * 0.9,
+        b.centerZ + span * 0.7,
+        b.centerY + span * 1.1
+      );
+      controls.update();
+      if ($('stockSizeLabel')) $('stockSizeLabel').textContent = formatStockSize(b);
+      if ($('sbMsg')) $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b);
+    }
+  } else {
+    stock.resize({
+      sizeX: 100, sizeY: 80, sizeZ: 20, res: 1.0,
+      originX: 0, originY: 0, originZ: -20
+    }, scene);
+    if ($('stockSizeLabel')) $('stockSizeLabel').textContent = '100×80×20';
+  }
+
   stock.reset();
   stock.updateMesh(scene, true);
   showLinesView(text);
@@ -251,6 +278,12 @@ function jogAxis(axis, dir) {
 }
 
 if ($('btnLoad')) $('btnLoad').addEventListener('click', loadProgram);
+if ($('btnFitStock')) {
+  $('btnFitStock').addEventListener('click', () => {
+    if ($('chkAutoFit')) $('chkAutoFit').checked = true;
+    loadProgram();
+  });
+}
 if ($('btnExample')) $('btnExample').addEventListener('click', () => {
   if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
   showEditView();
