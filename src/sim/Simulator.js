@@ -11,7 +11,7 @@ export class Simulator {
     this.moves = [];
     this.totalTime = 0;
     this.index = 0;
-    this.progress = 0;
+    this.progress = 0; // 0..1 within current move
     this.elapsed = 0;
     this.playing = false;
     this.singleBlock = false;
@@ -96,6 +96,9 @@ export class Simulator {
     if (m.tool) this.machine.tool = m.tool;
   }
 
+  /**
+   * @param {number} dt seconds
+   */
   tick(dt) {
     if (!this.playing || this.singleBlock) return;
     if (this.index >= this.moves.length) {
@@ -131,6 +134,7 @@ export class Simulator {
     const y1 = prev.y + dy * t1;
     const z1 = prev.z + dz * t1;
 
+    // Interpolate machine position
     this.machine.x = x1 + this.machine.g54.x;
     this.machine.y = y1 + this.machine.g54.y;
     this.machine.z = z1 + this.machine.g54.z + this.machine.toolLength;

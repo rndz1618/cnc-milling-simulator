@@ -25,6 +25,7 @@ export function createScene(container) {
   controls.dampingFactor = 0.08;
   controls.target.set(50, 5, 40);
 
+  // Lights
   scene.add(new THREE.AmbientLight(0x404060, 0.55));
   const dir = new THREE.DirectionalLight(0xffffff, 1.0);
   dir.position.set(100, 180, 120);
@@ -32,6 +33,7 @@ export function createScene(container) {
   scene.add(dir);
   scene.add(new THREE.DirectionalLight(0x88aaff, 0.3).position.set(-80, 60, -100));
 
+  // Bed
   const bed = new THREE.Mesh(
     new THREE.BoxGeometry(240, 8, 200),
     new THREE.MeshStandardMaterial({ color: 0x2a3038, metalness: 0.4, roughness: 0.55 })
@@ -40,9 +42,12 @@ export function createScene(container) {
   bed.receiveShadow = true;
   scene.add(bed);
 
+  // Grid
   const grid = new THREE.GridHelper(220, 22, 0x30363d, 0x1a1f26);
   grid.position.set(50, 0.05, 40);
   scene.add(grid);
+
+  // Axes
   scene.add(new THREE.AxesHelper(30).position.set(0, 0.3, 0));
 
   function onResize() {
@@ -59,34 +64,42 @@ export function createScene(container) {
 
 export function createToolMesh() {
   const g = new THREE.Group();
+
+  // Cutting flute – tip at local Y=0
   const flute = new THREE.Mesh(
     new THREE.CylinderGeometry(3, 3, 16, 16),
     new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.2 })
   );
   flute.position.y = 8;
   g.add(flute);
+
   const shank = new THREE.Mesh(
     new THREE.CylinderGeometry(5, 5, 28, 16),
     new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.85, roughness: 0.3 })
   );
   shank.position.y = 30;
   g.add(shank);
+
   const spindle = new THREE.Mesh(
     new THREE.CylinderGeometry(14, 16, 22, 20),
     new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.55, roughness: 0.4 })
   );
   spindle.position.y = 55;
   g.add(spindle);
+
+  // Tip marker
   const tip = new THREE.Mesh(
     new THREE.SphereGeometry(1.2, 12, 12),
     new THREE.MeshBasicMaterial({ color: 0xffaa00 })
   );
   tip.position.y = 0;
   g.add(tip);
+
   g.position.set(0, 50, 0);
   return g;
 }
 
+/** CNC work (x,y,z) → Three.js (x, z, y) */
 export function setToolPosition(toolMesh, mx, my, mz) {
   toolMesh.position.set(mx, mz, my);
 }
@@ -94,6 +107,7 @@ export function setToolPosition(toolMesh, mx, my, mz) {
 export function buildToolpathLines(moves) {
   const group = new THREE.Group();
   if (moves.length < 2) return group;
+
   const rapid = [];
   const feed = [];
   let prev = { x: 0, y: 0, z: 50 };
@@ -102,6 +116,7 @@ export function buildToolpathLines(moves) {
     arr.push(prev.x, prev.z, prev.y, m.x, m.z, m.y);
     prev = m;
   }
+
   function add(positions, color) {
     if (positions.length < 6) return;
     const geo = new THREE.BufferGeometry();
