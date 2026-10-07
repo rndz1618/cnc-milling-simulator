@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CNC Milling Simulator v0.3 – Voxel Stock</title>
+  <link rel="stylesheet" href="./src/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>
+      CNC Milling Simulator
+      <span class="badge">v0.3 Voxel • Modular</span>
+    </h1>
+    <div class="mode-tabs">
+      <button class="mode-tab" data-mode="setup">SETUP</button>
+      <button class="mode-tab active" data-mode="edit">EDIT</button>
+      <button class="mode-tab" data-mode="operation">OPERATION</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="left-panel">
+      <div class="panel-h">
+        <span>Program G-Code</span>
+        <span id="lineCount">0 gerakan</span>
+      </div>
+      <div id="lineInfo">Baris aktif: —</div>
+      <div class="gcode-wrap">
+        <textarea id="gcodeInput" spellcheck="false"></textarea>
+        <div id="gcodeLines"></div>
+      </div>
+      <div class="left-actions">
+        <button class="btn btn-primary" id="btnLoad">Load</button>
+        <button class="btn" id="btnExample">Contoh</button>
+        <button class="btn" id="btnClear">Clear</button>
+        <button class="btn" id="btnEditMode">Edit</button>
+        <label class="btn" style="cursor:pointer">
+          File
+          <input type="file" id="fileInput" accept=".nc,.gcode,.tap,.cnc,.txt" hidden />
+        </label>
+      </div>
+    </div>
+
+    <div class="center-panel">
+      <div id="canvas-container"></div>
+      <div class="view-btns">
+        <button class="btn btn-sm" id="btnResetView">Reset</button>
+        <button class="btn btn-sm" id="btnTopView">Top</button>
+        <button class="btn btn-sm" id="btnIsoView">Iso</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="dro-box">
+        <div class="dro-title">Digital Read Out (WORK)</div>
+        <div class="dro-row"><div class="dro-axis x">X</div><div class="dro-val" id="droX">0.000</div></div>
+        <div class="dro-row"><div class="dro-axis y">Y</div><div class="dro-val" id="droY">0.000</div></div>
+        <div class="dro-row"><div class="dro-axis z">Z</div><div class="dro-val" id="droZ">50.000</div></div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-title">Playback</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnPlay">▶ Play</button>
+          <button class="btn" id="btnPause">⏸ Pause</button>
+          <button class="btn" id="btnStop">⏹ Stop</button>
+          <button class="btn" id="btnStep">⏭ Step</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button class="btn" id="btnReset">↺ Reset</button>
+          <label class="chk"><input type="checkbox" id="chkSingleBlock" /> Single Block</label>
+          <label class="chk"><input type="checkbox" id="chkDryRun" /> Dry Run</label>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-title">Override</div>
+        <div class="slider-row">
+          <span>Feed</span>
+          <input type="range" id="feedOverride" min="0" max="200" value="100" />
+          <span id="feedVal">100%</span>
+        </div>
+        <div class="slider-row">
+          <span>Rapid</span>
+          <input type="range" id="rapidOverride" min="0" max="100" value="50" />
+          <span id="rapidVal">50%</span>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-title">Offset / Tool</div>
+        <div class="offset-grid">
+          <label>G54 X <input type="number" id="g54x" value="0" step="0.1" /></label>
+          <label>G54 Y <input type="number" id="g54y" value="0" step="0.1" /></label>
+          <label>G54 Z <input type="number" id="g54z" value="0" step="0.1" /></label>
+          <label>Tool Len <input type="number" id="toolLen" value="0" step="0.1" /></label>
+        </div>
+      </div>
+
+      <div class="prog-box" style="margin-top:auto;border-top:1px solid var(--border);border-bottom:none">
+        <div class="prog-bar-bg"><div class="prog-bar-fill" id="progressBar"></div></div>
+        <div class="prog-text">
+          <span id="progressText">0%</span>
+          <span id="timeText">00:00 / 00:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>v0.3 • Voxel material removal • Modular architecture</span>
+    <span>Space = Play/Pause • Buka via local server</span>
+  </footer>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
