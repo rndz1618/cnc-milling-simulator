@@ -120,36 +120,80 @@ export function setToolPosition(toolMesh, mx, my, mz) {
   toolMesh.position.set(mx, mz, my);
 }
 
-function colorForZ(z, isRapid) {
-  if (isRapid) return 0xff4444;
+function colorForZ(z) {
   if (z >= 0) return 0x44ddff;
-  if (z >= -3) return 0xffdd44;
-  if (z >= -6) return 0xff8844;
-  return 0xff44aa;
+  if (z >= -5) return 0xffdd44;
+  if (z >= -15) return 0xff9944;
+  return 0xff4488;
 }
 
-export function buildToolpathLines(moves) {
+/**
+ * Build colored toolpath.
+ * Rapids clipped to zRef+clearance so Z100 retracts don't dominate the view.
+ */
+export function buildToolpathLines(moves, opts = {}) {
   const group = new THREE.Group();
   if (!moves || moves.length < 1) return group;
 
-  const buckets = new Map();
-  let prev = { x: 0, y: 0, z: 50 };
+  const clearance = opts.rapidClearance ?? 15;
+  let zRef = 0;
+  for (const m of moves) {
+    if (m.type === 'feed') zRef = Math.max(zRef, m.z);
+  }
+  const rapidCap = zRef + clearance;
+
+  const feedBuckets = new Map();
+  const rapidPositions = [];
+
+  let prev = { x: 0, y: 0, z: Math.min(50, rapidCap) };
   for (const m of moves) {
     const isRapid = m.type === 'rapid';
-    const col = colorForZ(Math.min(prev.z, m.z), isRapid);
-    if (!buckets.has(col)) buckets.set(col, []);
-    const arr = buckets.get(col);
-    arr.push(prev.x, prev.z, prev.y, m.x, m.z, m.y);
+    let z0 = prev.z;
+    let z1 = m.z;
+    if (isRapid) {
+      z0 = Math.min(z0, rapidCap);
+      z1 = Math.min(z1, rapidCap);
+    }
+    if (prev.x === m.x && prev.y === m.y && Math.abs(z0 - z1) < 0.001 && isRapid) {
+      prev = m;
+      continue;
+    }
+
+    if (isRapid) {
+      rapidPositions.push(prev.x, z0, prev.y, m.x, z1, m.y);
+    } else {
+      const col = colorForZ(Math.min(z0, z1));
+      if (!feedBuckets.has(col)) feedBuckets.set(col, []);
+      feedBuckets.get(col).push(prev.x, z0, prev.y, m.x, z1, m.y);
+    }
     prev = m;
   }
 
-  for (const [col, positions] of buckets) {
+  if (rapidPositions.length >= 6) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(rapidPositions, 3));
+    group.add(new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({
+        color: 0xff4444,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false
+      })
+    ));
+  }
+
+  for (const [col, positions] of feedBuckets) {
     if (positions.length < 6) continue;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     group.add(new THREE.LineSegments(
       geo,
-      new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 1.0, linewidth: 2 })
+      new THREE.LineBasicMaterial({
+        color: col,
+        transparent: true,
+        opacity: 0.95
+      })
     ));
   }
   return group;
