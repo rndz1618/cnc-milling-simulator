@@ -1,14 +1,15 @@
 import { VoxelStock } from './stock/VoxelStock.js';
 import { boundsFromMoves, formatStockSize } from './stock/fitStock.js';
 import { parseGCode } from './machine/Parser.js';
-import { createMachineState, updateWorkCoords } from './machine/MachineState.js';
+import { createMachineState, updateWorkCoords, machineCoords } from './machine/MachineState.js';
 import { Simulator } from './sim/Simulator.js';
 import {
   createScene,
   createToolMesh,
   setToolDiameter,
   setToolPosition,
-  buildToolpathLines
+  buildToolpathLines,
+  createWorkZeroMarker
 } from './view/Scene.js';
 import * as THREE from 'three';
 import {
@@ -67,8 +68,11 @@ const stock = new VoxelStock({
 });
 stock.updateMesh(scene, true);
 
-const toolMesh = createToolMesh(6); // Ø12 default
+const toolMesh = createToolMesh(6);
 scene.add(toolMesh);
+
+const workZeroMarker = createWorkZeroMarker();
+scene.add(workZeroMarker);
 
 let toolpathGroup = null;
 let trailGroup = null;
@@ -195,23 +199,22 @@ function updateStatusBar() {
   if (sim.dryRun) flags.push('DRY RUN');
   if (sim.playing) flags.push('CYCLE ON');
   if ($('sbFlags')) $('sbFlags').textContent = flags.length ? flags.join(' · ') : '—';
-  if ($('sbAlarm')) {
-    $('sbAlarm').textContent = 'NO ALARMS';
-    $('sbAlarm').className = 'sb-item ok';
-  }
   if ($('hdrMode')) $('hdrMode').textContent = currentMode.toUpperCase();
 }
 
 function refreshUI() {
+  const mc = machineCoords(machine);
   if (droMode === 'machine') {
-    if ($('droX')) $('droX').textContent = fmt(machine.x + (machine.g54?.x || 0));
-    if ($('droY')) $('droY').textContent = fmt(machine.y + (machine.g54?.y || 0));
-    if ($('droZ')) $('droZ').textContent = fmt(machine.z + (machine.g54?.z || 0) + (machine.toolLength || 0));
+    if ($('droX')) $('droX').textContent = fmt(mc.x);
+    if ($('droY')) $('droY').textContent = fmt(mc.y);
+    if ($('droZ')) $('droZ').textContent = fmt(mc.z);
   } else {
     if ($('droX')) $('droX').textContent = fmt(machine.x);
     if ($('droY')) $('droY').textContent = fmt(machine.y);
     if ($('droZ')) $('droZ').textContent = fmt(machine.z);
   }
+  if (machine.activeWcs) activeWcs = machine.activeWcs;
+
   if ($('simStatus')) {
     $('simStatus').textContent = sim.playing
       ? 'RUN'
@@ -282,10 +285,25 @@ function showEditView() {
 
 function loadProgram() {
   const text = ($('gcodeInput') && $('gcodeInput').value) || SAMPLE;
-  const { moves, totalTime } = parseGCode(text);
+  const { moves, totalTime, alarms } = parseGCode(text);
   allMoves = moves;
   sim.loadMoves(moves, totalTime);
   if ($('lineCount')) $('lineCount').textContent = moves.length + ' gerakan';
+  if (alarms && alarms.length) {
+    const a = alarms[0];
+    if ($('sbAlarm')) {
+      $('sbAlarm').textContent = a.msg + ' (L' + a.line + ')';
+      $('sbAlarm').className = 'sb-item alarm';
+    }
+    if ($('sbMsg')) $('sbMsg').textContent = alarms.length + ' alarm(s) — ' + a.msg;
+  } else if ($('sbAlarm')) {
+    $('sbAlarm').textContent = 'NO ALARMS';
+    $('sbAlarm').className = 'sb-item ok';
+  }
+  if (moves.length && moves[0].wcs) {
+    machine.activeWcs = moves[0].wcs;
+    activeWcs = moves[0].wcs;
+  }
 
   disposeGroup(toolpathGroup);
   toolpathGroup = null;
@@ -316,7 +334,9 @@ function loadProgram() {
       );
       controls.update();
       if ($('stockSizeLabel')) $('stockSizeLabel').textContent = formatStockSize(b);
-      if ($('sbMsg')) $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b);
+      if ($('sbMsg') && !(alarms && alarms.length)) {
+        $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b) + ' | top Z=0';
+      }
     }
   } else {
     let ox = -50, oy = -40, sx = 150, sy = 120;
@@ -334,8 +354,8 @@ function loadProgram() {
         sy = Math.max(60, maxY - minY + pad * 2);
       }
     }
-    const oz = -37;
     const sz = 40;
+    const oz = -sz;
     stock.resize({
       sizeX: sx, sizeY: sy, sizeZ: sz, res: 1.0,
       originX: ox, originY: oy, originZ: oz
@@ -545,9 +565,11 @@ document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
 
 if ($('btnApplyWcs')) {
   $('btnApplyWcs').addEventListener('click', () => {
-    const o = wcsTable[activeWcs];
+    const o = wcsTable[activeWcs] || { x: 0, y: 0, z: 0 };
     machine.g54 = { x: o.x, y: o.y, z: o.z };
+    machine.activeWcs = activeWcs;
     markTrain('partzero');
+    if ($('sbMsg')) $('sbMsg').textContent = activeWcs + ' applied — MACHINE = WORK + offset';
     refreshUI();
   });
 }
