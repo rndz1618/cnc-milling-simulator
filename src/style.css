@@ -1,5 +1,5 @@
 :root {
-  --bg: #0d1117;
+  --bg: #0e1218;
   --panel: #161b22;
   --border: #30363d;
   --accent: #58a6ff;
@@ -99,8 +99,7 @@ header h1 {
   color: var(--text-dim);
   border-bottom: 1px solid var(--border);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: space-between; align-items: center;
   flex-shrink: 0;
 }
 #panelProgram { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -146,7 +145,7 @@ header h1 {
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
-.center-panel { position: relative; background: #0a0e14; min-height: 0; }
+.center-panel { position: relative; background: #1a2332; min-height: 0; }
 #canvas-container { width: 100%; height: 100%; }
 .view-btns {
   position: absolute; bottom: 10px; left: 10px;
@@ -172,7 +171,7 @@ header h1 {
 .dro-axis.x { color: #f85149; }
 .dro-axis.y { color: #3fb950; }
 .dro-axis.z { color: #58a6ff; }
-.dro-val { font-family: Consolas, monospace; font-size: 1.25rem; font-weight: 600; }
+.dro-val { font-family: Consolas, monospace; font-size: 1.25rem; font-weight: 700; color: #00e676; text-shadow: 0 0 6px #00e67644; }
 .dro-tabs { display: flex; gap: 3px; }
 .dro-tab {
   padding: 2px 7px; font-size: 0.6rem; font-weight: 700;
