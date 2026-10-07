@@ -3,8 +3,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 export function createScene(container) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0e14);
-  scene.fog = new THREE.Fog(0x0a0e14, 350, 900);
+  // Brighter workshop floor look (inspired by well-lit CNC shop / Haas demo videos)
+  scene.background = new THREE.Color(0x1a2332);
+  scene.fog = new THREE.Fog(0x1a2332, 450, 1100);
 
   const camera = new THREE.PerspectiveCamera(
     45,
@@ -19,6 +20,9 @@ export function createScene(container) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.25;
   container.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -27,28 +31,42 @@ export function createScene(container) {
   controls.target.set(50, 0, 40);
   controls.maxPolarAngle = Math.PI * 0.92;
 
-  scene.add(new THREE.AmbientLight(0x607080, 0.7));
-  const key = new THREE.DirectionalLight(0xffffff, 1.15);
-  key.position.set(80, 160, 100);
+  // Stronger, clearer lighting for training visibility
+  scene.add(new THREE.AmbientLight(0xc8d4e8, 0.85));
+  const key = new THREE.DirectionalLight(0xfff5e6, 1.55);
+  key.position.set(90, 180, 110);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
+  key.shadow.bias = -0.0003;
   scene.add(key);
-  scene.add(new THREE.DirectionalLight(0x88aaff, 0.45).position.set(-90, 80, -70));
-  scene.add(new THREE.HemisphereLight(0x8ab4f8, 0x3a2a10, 0.35));
+  const fill = new THREE.DirectionalLight(0xa0c4ff, 0.65);
+  fill.position.set(-100, 90, -80);
+  scene.add(fill);
+  scene.add(new THREE.HemisphereLight(0xd0e4ff, 0x4a3a20, 0.55));
+  // Soft top light so stock top face is clearly readable
+  const top = new THREE.DirectionalLight(0xffffff, 0.4);
+  top.position.set(50, 250, 40);
+  scene.add(top);
 
   const bed = new THREE.Mesh(
     new THREE.BoxGeometry(240, 10, 200),
-    new THREE.MeshStandardMaterial({ color: 0x2a3038, metalness: 0.45, roughness: 0.55 })
+    new THREE.MeshStandardMaterial({
+      color: 0x3a4555,
+      metalness: 0.35,
+      roughness: 0.6,
+      emissive: 0x0a1018,
+      emissiveIntensity: 0.15
+    })
   );
   bed.position.set(50, -25, 40);
   bed.receiveShadow = true;
   scene.add(bed);
 
-  const grid = new THREE.GridHelper(220, 22, 0x404850, 0x1e242c);
+  const grid = new THREE.GridHelper(220, 22, 0x6a7a90, 0x3a4a5c);
   grid.position.set(50, -19.9, 40);
   scene.add(grid);
 
-  const axes = new THREE.AxesHelper(25);
+  const axes = new THREE.AxesHelper(28);
   axes.position.set(0, 0.2, 0);
   scene.add(axes);
 
@@ -70,28 +88,28 @@ export function createToolMesh() {
 
   const flute = new THREE.Mesh(
     new THREE.CylinderGeometry(3, 3, 16, 16),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.9, roughness: 0.25 })
+    new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.85, roughness: 0.28 })
   );
   flute.position.y = 8;
   g.add(flute);
 
   const shank = new THREE.Mesh(
     new THREE.CylinderGeometry(5, 5, 28, 16),
-    new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.85, roughness: 0.3 })
+    new THREE.MeshStandardMaterial({ color: 0xb0b0b0, metalness: 0.8, roughness: 0.28 })
   );
   shank.position.y = 30;
   g.add(shank);
 
   const spindle = new THREE.Mesh(
     new THREE.CylinderGeometry(14, 16, 22, 20),
-    new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.55, roughness: 0.4 })
+    new THREE.MeshStandardMaterial({ color: 0x5a5a5a, metalness: 0.5, roughness: 0.38 })
   );
   spindle.position.y = 55;
   g.add(spindle);
 
   const tip = new THREE.Mesh(
     new THREE.SphereGeometry(1.4, 12, 12),
-    new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+    new THREE.MeshBasicMaterial({ color: 0xffcc33 })
   );
   tip.position.y = 0;
   g.add(tip);
@@ -125,6 +143,7 @@ export function buildToolpathLines(moves) {
   const group = new THREE.Group();
   if (!moves || moves.length < 1) return group;
 
+  // Bucket segments by color
   const buckets = new Map();
   let prev = { x: 0, y: 0, z: 50 };
   for (const m of moves) {
@@ -142,7 +161,7 @@ export function buildToolpathLines(moves) {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     group.add(new THREE.LineSegments(
       geo,
-      new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.9 })
+      new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 1.0, linewidth: 2 })
     ));
   }
   return group;
