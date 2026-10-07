@@ -1,7 +1,6 @@
 /**
  * Compute stock bounds from toolpath moves for auto-fit.
- * XY from all moves; Z from feed moves (cutting depth).
- * Stock top defaults near Z=0 (WCS part zero convention).
+ * Robust to real machine programs: ignores rapid retracts, G28, outliers.
  */
 export function boundsFromMoves(moves, opts = {}) {
   const {
@@ -11,34 +10,42 @@ export function boundsFromMoves(moves, opts = {}) {
     minSizeX = 20,
     minSizeY = 20,
     minSizeZ = 10,
+    maxSizeZ = 80,
     defaultZ = 20,
-    maxVoxels = 600000,
-    toolRadius = 3
+    maxVoxels = 500000,
+    toolRadius = 3,
+    cutZMax = 5,
+    outlierZ = 200
   } = opts;
 
   if (!moves || !moves.length) return null;
 
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
-  let minFeedZ = Infinity, maxFeedZ = -Infinity;
-  let hasFeed = false;
+  const nearWork = [];
+  const cutZs = [];
 
   for (const m of moves) {
+    if (Math.abs(m.z) > outlierZ) continue;
+    if (m.type === 'feed' && m.z <= cutZMax) {
+      cutZs.push(m.z);
+      nearWork.push(m);
+    }
+  }
+
+  const xySrc = nearWork.length
+    ? nearWork
+    : moves.filter((m) => m.type === 'feed' && Math.abs(m.z) <= outlierZ);
+  const xyPoints = xySrc.length ? xySrc : moves.filter((m) => Math.abs(m.z) <= outlierZ);
+  if (!xyPoints.length) return null;
+
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (const m of xyPoints) {
     minX = Math.min(minX, m.x);
     maxX = Math.max(maxX, m.x);
     minY = Math.min(minY, m.y);
     maxY = Math.max(maxY, m.y);
-    minZ = Math.min(minZ, m.z);
-    maxZ = Math.max(maxZ, m.z);
-    if (m.type === 'feed') {
-      hasFeed = true;
-      minFeedZ = Math.min(minFeedZ, m.z);
-      maxFeedZ = Math.max(maxFeedZ, m.z);
-    }
   }
 
-  // Expand XY by tool radius + pad so cutter stays inside stock edges
   const r = toolRadius + padXY;
   minX -= r;
   maxX += r;
@@ -48,29 +55,35 @@ export function boundsFromMoves(moves, opts = {}) {
   let sizeX = Math.max(minSizeX, maxX - minX);
   let sizeY = Math.max(minSizeY, maxY - minY);
 
-  // Z: stock top near highest cutting surface or Z0
   let stockTop, stockBot;
-  if (hasFeed) {
-    stockTop = Math.max(0, maxFeedZ) + padZTop;
-    stockBot = Math.min(minFeedZ, 0) - padZBot;
+  if (cutZs.length) {
+    const minCut = Math.min(...cutZs);
+    const maxCut = Math.max(...cutZs);
+    stockTop = Math.max(0, maxCut) + padZTop;
+    stockBot = Math.min(minCut, 0) - padZBot;
   } else {
     stockTop = padZTop;
     stockBot = -defaultZ;
   }
-  if (stockTop - stockBot < minSizeZ) {
-    stockBot = stockTop - minSizeZ;
-  }
 
   let sizeZ = stockTop - stockBot;
+  if (sizeZ < minSizeZ) {
+    stockBot = stockTop - minSizeZ;
+    sizeZ = minSizeZ;
+  }
+  if (sizeZ > maxSizeZ) {
+    stockBot = stockTop - maxSizeZ;
+    sizeZ = maxSizeZ;
+  }
+
   const originX = minX;
   const originY = minY;
   const originZ = stockBot;
 
-  // Auto resolution to stay under maxVoxels
   let res = 1.0;
   const voxels = () =>
     Math.ceil(sizeX / res) * Math.ceil(sizeY / res) * Math.ceil(sizeZ / res);
-  while (voxels() > maxVoxels && res < 5) {
+  while (voxels() > maxVoxels && res < 4) {
     res = Math.round((res + 0.25) * 100) / 100;
   }
 
