@@ -28,16 +28,6 @@ npm install
 npm run dev
 ```
 
-Do **not** open `index.html` via `file://` — browsers block ES modules.
+## Deploy
 
-## Features v0.3
-
-- Voxel stock (1 mm) with solid mesh rebuild
-- Vertical-ish pocket / contour walls
-- G-code line highlight (yellow) synced to simulation
-- Single Block, Dry Run, Feed/Rapid override
-- Haas-style mode tabs (Setup / Edit / Operation)
-
-## Live demo
-
-Deployed on Vercel after linking this repository.
+Static hosting (Vercel/Netlify) works out of the box via CDN importmap for Three.js.
