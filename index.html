@@ -1,1 +1,275 @@
-see-file
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CNC Milling Simulator – Haas-style UI</title>
+  <link rel="stylesheet" href="./src/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="hdr-left">
+      <h1>CNC Milling Simulator <span class="badge">v0.4 Haas UI</span></h1>
+      <div class="mode-tabs">
+        <button class="mode-tab" data-mode="setup">SETUP</button>
+        <button class="mode-tab active" data-mode="edit">EDIT</button>
+        <button class="mode-tab" data-mode="operation">OPERATION</button>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <span class="hdr-chip" id="hdrMode">EDIT</span>
+      <span class="hdr-chip" id="hdrSpindle">S OFF</span>
+      <span class="hdr-chip" id="hdrTime">--:--</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="left-panel">
+      <div id="panelProgram">
+        <div class="panel-h">
+          <span>Program</span>
+          <span id="lineCount">0 gerakan</span>
+        </div>
+        <div id="lineInfo">Baris aktif: —</div>
+        <div class="gcode-wrap">
+          <textarea id="gcodeInput" spellcheck="false"></textarea>
+          <div id="gcodeLines"></div>
+        </div>
+        <div class="left-actions">
+          <button class="btn btn-primary" id="btnLoad">Load</button>
+          <button class="btn" id="btnExample">Contoh</button>
+          <button class="btn" id="btnClear">Clear</button>
+          <button class="btn" id="btnEditMode">Edit</button>
+          <label class="btn" style="cursor:pointer">
+            File
+            <input type="file" id="fileInput" accept=".nc,.gcode,.tap,.cnc,.txt" hidden />
+          </label>
+        </div>
+      </div>
+
+      <div id="panelSetup" style="display:none;flex-direction:column;height:100%;min-height:0">
+        <div class="panel-h">
+          <span>Setup</span>
+          <span class="subtabs">
+            <button class="subtab active" data-sub="work">WORK</button>
+            <button class="subtab" data-sub="tool">TOOL</button>
+            <button class="subtab" data-sub="jog">JOG</button>
+          </span>
+        </div>
+
+        <div id="setupWork" class="setup-pane">
+          <div class="setup-hint">Work Coordinate System — PART ZERO SET (Haas)</div>
+          <table class="offset-table" id="workOffsetTable">
+            <thead><tr><th>#</th><th>X</th><th>Y</th><th>Z</th><th></th></tr></thead>
+            <tbody>
+              <tr data-wcs="G54" class="active-row">
+                <td>G54</td>
+                <td><input type="number" step="0.001" value="0" data-axis="x" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="y" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="z" /></td>
+                <td><button class="btn btn-sm btn-set-zero">ZERO</button></td>
+              </tr>
+              <tr data-wcs="G55">
+                <td>G55</td>
+                <td><input type="number" step="0.001" value="0" data-axis="x" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="y" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="z" /></td>
+                <td><button class="btn btn-sm btn-set-zero">ZERO</button></td>
+              </tr>
+              <tr data-wcs="G56">
+                <td>G56</td>
+                <td><input type="number" step="0.001" value="0" data-axis="x" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="y" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="z" /></td>
+                <td><button class="btn btn-sm btn-set-zero">ZERO</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="setup-actions">
+            <button class="btn btn-primary" id="btnApplyWcs">Apply Active WCS</button>
+          </div>
+        </div>
+
+        <div id="setupTool" class="setup-pane" style="display:none">
+          <div class="setup-hint">Tool Length / Diameter — TOOL OFFSET MEASURE</div>
+          <table class="offset-table" id="toolOffsetTable">
+            <thead><tr><th>T</th><th>Length</th><th>Dia</th><th>Type</th></tr></thead>
+            <tbody>
+              <tr data-tool="1" class="active-row">
+                <td>T1</td>
+                <td><input type="number" step="0.001" value="0" data-field="length" /></td>
+                <td><input type="number" step="0.1" value="6" data-field="dia" /></td>
+                <td>End Mill</td>
+              </tr>
+              <tr data-tool="2">
+                <td>T2</td>
+                <td><input type="number" step="0.001" value="0" data-field="length" /></td>
+                <td><input type="number" step="0.1" value="10" data-field="dia" /></td>
+                <td>End Mill</td>
+              </tr>
+              <tr data-tool="3">
+                <td>T3</td>
+                <td><input type="number" step="0.001" value="0" data-field="length" /></td>
+                <td><input type="number" step="0.1" value="3" data-field="dia" /></td>
+                <td>Drill</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="setup-actions">
+            <button class="btn btn-primary" id="btnApplyTool">Apply Active Tool</button>
+          </div>
+        </div>
+
+        <div id="setupJog" class="setup-pane" style="display:none">
+          <div class="setup-hint">HANDLE JOG — gerakkan sumbu manual (training setup)</div>
+          <div class="jog-step">
+            <span>Increment</span>
+            <div class="jog-inc-btns">
+              <button class="btn btn-sm jog-inc active" data-inc="0.1">0.1</button>
+              <button class="btn btn-sm jog-inc" data-inc="1">1.0</button>
+              <button class="btn btn-sm jog-inc" data-inc="10">10</button>
+            </div>
+          </div>
+          <div class="jog-axes">
+            <div class="jog-axis-row">
+              <span class="jog-lbl x">X</span>
+              <button class="btn jog-btn" data-axis="x" data-dir="-1">−</button>
+              <button class="btn jog-btn" data-axis="x" data-dir="1">+</button>
+            </div>
+            <div class="jog-axis-row">
+              <span class="jog-lbl y">Y</span>
+              <button class="btn jog-btn" data-axis="y" data-dir="-1">−</button>
+              <button class="btn jog-btn" data-axis="y" data-dir="1">+</button>
+            </div>
+            <div class="jog-axis-row">
+              <span class="jog-lbl z">Z</span>
+              <button class="btn jog-btn" data-axis="z" data-dir="-1">−</button>
+              <button class="btn jog-btn" data-axis="z" data-dir="1">+</button>
+            </div>
+          </div>
+          <div class="setup-actions">
+            <button class="btn" id="btnJogHome">ZERO RETURN (home)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="center-panel">
+      <div id="canvas-container"></div>
+      <div class="view-btns">
+        <button class="btn btn-sm" id="btnResetView">Reset</button>
+        <button class="btn btn-sm" id="btnTopView">Top</button>
+        <button class="btn btn-sm" id="btnIsoView">Iso</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="dro-box">
+        <div class="dro-title">
+          Position
+          <span class="dro-tabs">
+            <button class="dro-tab active" data-dro="work">WORK</button>
+            <button class="dro-tab" data-dro="machine">MACHINE</button>
+          </span>
+        </div>
+        <div class="dro-row"><div class="dro-axis x">X</div><div class="dro-val" id="droX">0.000</div></div>
+        <div class="dro-row"><div class="dro-axis y">Y</div><div class="dro-val" id="droY">0.000</div></div>
+        <div class="dro-row"><div class="dro-axis z">Z</div><div class="dro-val" id="droZ">50.000</div></div>
+      </div>
+
+      <div class="active-codes">
+        <div class="ctrl-title">Active Codes</div>
+        <div class="codes-row" id="activeCodes">
+          <span class="code-chip">G90</span>
+          <span class="code-chip">G54</span>
+          <span class="code-chip">G17</span>
+          <span class="code-chip">G21</span>
+        </div>
+        <div class="codes-row" id="activeToolInfo">
+          <span class="code-chip accent">T1</span>
+          <span class="code-chip">H01</span>
+          <span class="code-chip">D01</span>
+          <span class="code-chip" id="codeSpindle">M5</span>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-title">Playback</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnPlay">▶ CYCLE START</button>
+          <button class="btn" id="btnPause">⏸ FEED HOLD</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button class="btn" id="btnStop">⏹ RESET</button>
+          <button class="btn" id="btnStep">⏭ Step</button>
+          <button class="btn" id="btnReset">↺ Rewind</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <label class="chk"><input type="checkbox" id="chkSingleBlock" /> Single Block</label>
+          <label class="chk"><input type="checkbox" id="chkDryRun" /> Dry Run</label>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-title">Override</div>
+        <div class="slider-row">
+          <span>Feed</span>
+          <input type="range" id="feedOverride" min="0" max="200" value="100" />
+          <span id="feedVal">100%</span>
+        </div>
+        <div class="slider-row">
+          <span>Rapid</span>
+          <input type="range" id="rapidOverride" min="0" max="100" value="50" />
+          <span id="rapidVal">50%</span>
+        </div>
+        <div class="slider-row">
+          <span>Sim</span>
+          <input type="range" id="speedSlider" min="0.1" max="15" step="0.1" value="1" />
+          <span id="speedLabel">1.0×</span>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-title">Status</div>
+        <div class="status-grid">
+          <div><label>Mode</label><span id="simMode">EDIT</span></div>
+          <div><label>State</label><span id="simStatus">IDLE</span></div>
+          <div><label>Tool</label><span id="simTool">T1 Ø6</span></div>
+          <div><label>Stock</label><span id="stockLeft">100%</span></div>
+        </div>
+      </div>
+
+      <div class="prog-box">
+        <div class="prog-bar-bg"><div class="prog-bar-fill" id="progressBar"></div></div>
+        <div class="prog-text">
+          <span id="progressText">0%</span>
+          <span id="timeText">00:00 / 00:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="status-bar">
+    <div class="sb-left">
+      <span class="sb-item" id="sbAlarm">NO ALARMS</span>
+      <span class="sb-sep">|</span>
+      <span class="sb-item" id="sbFlags">—</span>
+    </div>
+    <div class="sb-right">
+      <span class="sb-item">Space = Cycle Start / Feed Hold</span>
+      <span class="sb-sep">|</span>
+      <span class="sb-item">Arrow keys = Jog (SETUP)</span>
+    </div>
+  </footer>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
