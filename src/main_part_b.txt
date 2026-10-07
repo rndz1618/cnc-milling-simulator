@@ -3,7 +3,9 @@ async function boot() {
   const bin = Uint8Array.from(atob(B64), c => c.charCodeAt(0));
   const ds = new DecompressionStream("deflate");
   const stream = new Blob([bin]).stream().pipeThrough(ds);
-  const code = await new Response(stream).text();
+  let code = await new Response(stream).text();
+  code = code.replace(/from\s+['"]three['"]/g,
+    "from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js'");
   const blob = new Blob([code], { type: "text/javascript" });
   const url = URL.createObjectURL(blob);
   await import(url);
