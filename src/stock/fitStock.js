@@ -9,7 +9,7 @@ export function boundsFromMoves(moves, opts = {}) {
     padZBot = 4,
     minSizeX = 20,
     minSizeY = 20,
-    minSizeZ = 10,
+    minSizeZ = 30,
     maxSizeZ = 80,
     defaultZ = 20,
     maxVoxels = 500000,
@@ -58,9 +58,9 @@ export function boundsFromMoves(moves, opts = {}) {
   let stockTop, stockBot;
   if (cutZs.length) {
     const minCut = Math.min(...cutZs);
-    const maxCut = Math.max(...cutZs);
-    // Z0 is usually top of work / clamp — keep stock top at least padZTop above Z0
-    stockTop = Math.max(padZTop, maxCut + padZTop);
+    // Stock TOP always near Z0 (part zero surface) + small pad
+    stockTop = Math.max(padZTop, 0 + padZTop);
+    // Bottom covers deepest cut + pad (tool enters material — correct)
     stockBot = Math.min(minCut, 0) - padZBot;
   } else {
     stockTop = padZTop;
