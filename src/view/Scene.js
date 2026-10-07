@@ -3,7 +3,6 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 export function createScene(container) {
   const scene = new THREE.Scene();
-  // Brighter workshop floor look (inspired by well-lit CNC shop / Haas demo videos)
   scene.background = new THREE.Color(0x1a2332);
   scene.fog = new THREE.Fog(0x1a2332, 450, 1100);
 
@@ -31,7 +30,6 @@ export function createScene(container) {
   controls.target.set(50, 0, 40);
   controls.maxPolarAngle = Math.PI * 0.92;
 
-  // Stronger, clearer lighting for training visibility
   scene.add(new THREE.AmbientLight(0xc8d4e8, 0.85));
   const key = new THREE.DirectionalLight(0xfff5e6, 1.55);
   key.position.set(90, 180, 110);
@@ -43,7 +41,6 @@ export function createScene(container) {
   fill.position.set(-100, 90, -80);
   scene.add(fill);
   scene.add(new THREE.HemisphereLight(0xd0e4ff, 0x4a3a20, 0.55));
-  // Soft top light so stock top face is clearly readable
   const top = new THREE.DirectionalLight(0xffffff, 0.4);
   top.position.set(50, 250, 40);
   scene.add(top);
@@ -80,7 +77,7 @@ export function createScene(container) {
   window.addEventListener('resize', onResize);
   setTimeout(onResize, 50);
 
-  return { scene, camera, renderer, controls, onResize };
+  return { scene, camera, renderer, controls, bed, grid, onResize };
 }
 
 export function createToolMesh() {
@@ -123,14 +120,6 @@ export function setToolPosition(toolMesh, mx, my, mz) {
   toolMesh.position.set(mx, mz, my);
 }
 
-/**
- * Toolpath colored by Z-level:
- *  rapid  → red
- *  Z >= 0  → cyan (above stock)
- *  Z ~ -2  → yellow (shallow cut)
- *  Z ~ -5  → orange (deeper)
- *  Z < -5  → magenta (deep)
- */
 function colorForZ(z, isRapid) {
   if (isRapid) return 0xff4444;
   if (z >= 0) return 0x44ddff;
@@ -143,7 +132,6 @@ export function buildToolpathLines(moves) {
   const group = new THREE.Group();
   if (!moves || moves.length < 1) return group;
 
-  // Bucket segments by color
   const buckets = new Map();
   let prev = { x: 0, y: 0, z: 50 };
   for (const m of moves) {
