@@ -17,7 +17,7 @@
 <body>
   <header>
     <div class="hdr-left">
-      <h1>CNC Milling Simulator <span class="badge">v0.6.1 Auto-fit</span></h1>
+      <h1>CNC Milling Simulator <span class="badge">v0.6.2 Override</span></h1>
       <div class="mode-tabs">
         <button class="mode-tab" data-mode="setup">SETUP</button>
         <button class="mode-tab active" data-mode="edit">EDIT</button>
@@ -123,8 +123,8 @@
               <tr data-tool="3">
                 <td>T3</td>
                 <td><input type="number" step="0.001" value="0" data-field="length" /></td>
-                <td><input type="number" step="0.1" value="3" data-field="dia" /></td>
-                <td>Drill</td>
+                <td><input type="number" step="0.1" value="12" data-field="dia" /></td>
+                <td>End Mill</td>
               </tr>
             </tbody>
           </table>
@@ -225,20 +225,34 @@
 
       <div class="ctrl-section">
         <div class="ctrl-title">Override</div>
-        <div class="slider-row">
-          <span>Feed</span>
-          <input type="range" id="feedOverride" min="0" max="200" value="100" />
-          <span id="feedVal">100%</span>
+        <div class="ovr-group">
+          <div class="ovr-label">Feed <span id="feedVal" class="ovr-val">100%</span></div>
+          <div class="ovr-btns" id="feedOvrBtns">
+            <button type="button" class="ovr-btn" data-ovr="feed" data-val="5">5%</button>
+            <button type="button" class="ovr-btn" data-ovr="feed" data-val="25">25%</button>
+            <button type="button" class="ovr-btn" data-ovr="feed" data-val="50">50%</button>
+            <button type="button" class="ovr-btn active" data-ovr="feed" data-val="100">100%</button>
+            <button type="button" class="ovr-btn" data-ovr="feed" data-val="200">200%</button>
+          </div>
         </div>
-        <div class="slider-row">
-          <span>Rapid</span>
-          <input type="range" id="rapidOverride" min="0" max="100" value="50" />
-          <span id="rapidVal">50%</span>
+        <div class="ovr-group">
+          <div class="ovr-label">Rapid <span id="rapidVal" class="ovr-val">50%</span></div>
+          <div class="ovr-btns" id="rapidOvrBtns">
+            <button type="button" class="ovr-btn" data-ovr="rapid" data-val="5">5%</button>
+            <button type="button" class="ovr-btn" data-ovr="rapid" data-val="25">25%</button>
+            <button type="button" class="ovr-btn active" data-ovr="rapid" data-val="50">50%</button>
+            <button type="button" class="ovr-btn" data-ovr="rapid" data-val="100">100%</button>
+          </div>
         </div>
-        <div class="slider-row">
-          <span>Sim</span>
-          <input type="range" id="speedSlider" min="0.1" max="15" step="0.1" value="1" />
-          <span id="speedLabel">1.0×</span>
+        <div class="ovr-group">
+          <div class="ovr-label">Sim Speed <span id="speedLabel" class="ovr-val">1×</span></div>
+          <div class="ovr-btns" id="simSpeedBtns">
+            <button type="button" class="ovr-btn active" data-ovr="sim" data-val="1">1×</button>
+            <button type="button" class="ovr-btn" data-ovr="sim" data-val="2">2×</button>
+            <button type="button" class="ovr-btn" data-ovr="sim" data-val="5">5×</button>
+            <button type="button" class="ovr-btn" data-ovr="sim" data-val="10">10×</button>
+            <button type="button" class="ovr-btn" data-ovr="sim" data-val="25">25×</button>
+          </div>
         </div>
       </div>
 
@@ -344,6 +358,5 @@
   </footer>
 
   <script type="module" src="./src/main.js"></script>
-  <script type="module" src="./src/v06.js"></script>
 </body>
 </html>
