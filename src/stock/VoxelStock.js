@@ -1,7 +1,6 @@
 /**
  * VoxelStock – 3D voxel grid for CNC material removal.
- * Tool carves voxels; surface mesh rebuilt with greedy meshing
- * so pocket/contour walls are near-vertical (Eureka-like).
+ * Tool carves voxels; surface mesh rebuilt so pocket walls are near-vertical.
  */
 import * as THREE from 'three';
 
@@ -13,7 +12,7 @@ export class VoxelStock {
     res = 1.0,
     originX = 0,
     originY = 0,
-    originZ = -20
+    originZ = -20 // work Z of bottom; top of stock = originZ + sizeZ = 0
   } = {}) {
     this.sizeX = sizeX;
     this.sizeY = sizeY;
@@ -30,14 +29,17 @@ export class VoxelStock {
     this.grid = new Uint8Array(this.nx * this.ny * this.nz);
     this.mesh = null;
     this.material = new THREE.MeshStandardMaterial({
-      color: 0xd4a84b,
-      metalness: 0.08,
-      roughness: 0.65,
-      flatShading: true
+      color: 0xe8b84a,
+      emissive: 0x3a2808,
+      emissiveIntensity: 0.25,
+      metalness: 0.15,
+      roughness: 0.55,
+      flatShading: true,
+      side: THREE.DoubleSide
     });
     this._dirty = true;
     this._lastRebuild = 0;
-    this.rebuildIntervalMs = 60;
+    this.rebuildIntervalMs = 80;
 
     this.fill();
   }
@@ -66,6 +68,10 @@ export class VoxelStock {
     return ix >= 0 && ix < this.nx && iy >= 0 && iy < this.ny && iz >= 0 && iz < this.nz;
   }
 
+  /**
+   * Remove voxels whose center is inside tool cylinder (XY)
+   * and at or above tool tip Z (material above tip is cut away).
+   */
   cutCylinder(cx, cy, zTip, radius) {
     const r2 = radius * radius;
     const { ix: cx0, iy: cy0 } = this.worldToVoxel(cx, cy, zTip);
@@ -76,8 +82,7 @@ export class VoxelStock {
       for (let ix = cx0 - rVox; ix <= cx0 + rVox; ix++) {
         const wx = this.originX + (ix + 0.5) * this.res;
         const wy = this.originY + (iy + 0.5) * this.res;
-        const d2 = (wx - cx) ** 2 + (wy - cy) ** 2;
-        if (d2 > r2) continue;
+        if ((wx - cx) ** 2 + (wy - cy) ** 2 > r2) continue;
 
         for (let iz = 0; iz < this.nz; iz++) {
           if (!this.inBounds(ix, iy, iz)) continue;
@@ -101,19 +106,25 @@ export class VoxelStock {
     if (z0 > stockTop + 0.5 && z1 > stockTop + 0.5) return false;
 
     const dist = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2 + (z1 - z0) ** 2);
-    const step = Math.max(this.res * 0.5, 0.4);
+    const step = Math.max(this.res * 0.45, 0.35);
     const n = Math.max(1, Math.ceil(dist / step));
     let changed = false;
     for (let s = 0; s <= n; s++) {
       const t = s / n;
-      const x = x0 + (x1 - x0) * t;
-      const y = y0 + (y1 - y0) * t;
-      const z = z0 + (z1 - z0) * t;
-      if (this.cutCylinder(x, y, z, radius)) changed = true;
+      if (this.cutCylinder(
+        x0 + (x1 - x0) * t,
+        y0 + (y1 - y0) * t,
+        z0 + (z1 - z0) * t,
+        radius
+      )) changed = true;
     }
     return changed;
   }
 
+  /**
+   * Build solid surface mesh (outer faces only) in Three.js coords:
+   * work (x,y,z) → Three (x, z, y)
+   */
   buildGeometry() {
     const positions = [];
     const normals = [];
@@ -125,6 +136,7 @@ export class VoxelStock {
     const isSolid = (ix, iy, iz) =>
       this.inBounds(ix, iy, iz) && this.grid[this.idx(ix, iy, iz)] === 1;
 
+    // face: d = neighbor offset, n = outward normal (work space)
     const faces = [
       { d: [1, 0, 0], n: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
       { d: [-1, 0, 0], n: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
@@ -148,7 +160,6 @@ export class VoxelStock {
             const cx = ix + 0.5 + f.d[0] * 0.5;
             const cy = iy + 0.5 + f.d[1] * 0.5;
             const cz = iz + 0.5 + f.d[2] * 0.5;
-
             const u = f.u;
             const v = f.v;
             const corners = [
@@ -158,7 +169,7 @@ export class VoxelStock {
               [cx - u[0] * 0.5 + v[0] * 0.5, cy - u[1] * 0.5 + v[1] * 0.5, cz - u[2] * 0.5 + v[2] * 0.5]
             ];
 
-            const order = f.d[0] + f.d[1] + f.d[2] > 0
+            const order = (f.d[0] + f.d[1] + f.d[2] > 0)
               ? [0, 1, 2, 0, 2, 3]
               : [0, 2, 1, 0, 3, 2];
 
@@ -167,6 +178,7 @@ export class VoxelStock {
               const wx = ox + c[0] * res;
               const wy = oy + c[1] * res;
               const wz = oz + c[2] * res;
+              // Three.js: X=workX, Y=workZ (height), Z=workY
               positions.push(wx, wz, wy);
               normals.push(f.n[0], f.n[2], f.n[1]);
             }
@@ -176,8 +188,19 @@ export class VoxelStock {
     }
 
     const geo = new THREE.BufferGeometry();
+    if (positions.length === 0) {
+      // Fallback solid box so stock is never invisible
+      const box = new THREE.BoxGeometry(this.sizeX, this.sizeZ, this.sizeY);
+      box.translate(
+        this.originX + this.sizeX / 2,
+        this.originZ + this.sizeZ / 2,
+        this.originY + this.sizeY / 2
+      );
+      return box;
+    }
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.computeBoundingSphere();
     return geo;
   }
 
@@ -193,6 +216,7 @@ export class VoxelStock {
       this.mesh = new THREE.Mesh(geo, this.material);
       this.mesh.castShadow = true;
       this.mesh.receiveShadow = true;
+      this.mesh.name = 'stock';
       scene.add(this.mesh);
     } else {
       this.mesh.geometry.dispose();
