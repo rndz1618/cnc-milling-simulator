@@ -80,39 +80,65 @@ export function createScene(container) {
   return { scene, camera, renderer, controls, bed, grid, onResize };
 }
 
-export function createToolMesh() {
+/**
+ * Tool mesh. radius = cutter radius mm (default 6 → Ø12).
+ * Tip at local y=0 so setToolPosition places tip at programmed Z.
+ */
+export function createToolMesh(radius = 6) {
   const g = new THREE.Group();
+  const r = Math.max(1.5, radius);
 
+  const fluteLen = Math.max(12, r * 3);
   const flute = new THREE.Mesh(
-    new THREE.CylinderGeometry(3, 3, 16, 16),
-    new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.85, roughness: 0.28 })
+    new THREE.CylinderGeometry(r, r * 0.95, fluteLen, 20),
+    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.9, roughness: 0.25 })
   );
-  flute.position.y = 8;
+  flute.position.y = fluteLen / 2;
   g.add(flute);
 
+  const shankR = r * 1.15;
+  const shankLen = 20;
   const shank = new THREE.Mesh(
-    new THREE.CylinderGeometry(5, 5, 28, 16),
-    new THREE.MeshStandardMaterial({ color: 0xb0b0b0, metalness: 0.8, roughness: 0.28 })
+    new THREE.CylinderGeometry(shankR, shankR, shankLen, 16),
+    new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.85, roughness: 0.25 })
   );
-  shank.position.y = 30;
+  shank.position.y = fluteLen + shankLen / 2;
   g.add(shank);
 
-  const spindle = new THREE.Mesh(
-    new THREE.CylinderGeometry(14, 16, 22, 20),
-    new THREE.MeshStandardMaterial({ color: 0x5a5a5a, metalness: 0.5, roughness: 0.38 })
+  const holdR = Math.max(8, r * 1.8);
+  const holdLen = 14;
+  const holder = new THREE.Mesh(
+    new THREE.CylinderGeometry(holdR * 0.9, holdR, holdLen, 20),
+    new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.55, roughness: 0.35 })
   );
-  spindle.position.y = 55;
-  g.add(spindle);
+  holder.position.y = fluteLen + shankLen + holdLen / 2;
+  g.add(holder);
 
   const tip = new THREE.Mesh(
-    new THREE.SphereGeometry(1.4, 12, 12),
+    new THREE.SphereGeometry(r * 0.35, 10, 10),
     new THREE.MeshBasicMaterial({ color: 0xffcc33 })
   );
   tip.position.y = 0;
   g.add(tip);
 
+  g.userData.radius = r;
   g.position.set(0, 50, 0);
   return g;
+}
+
+/** Rebuild tool geometry for a new diameter (mm). */
+export function setToolDiameter(toolMesh, diameterMm) {
+  const r = Math.max(1.5, (diameterMm || 12) / 2);
+  while (toolMesh.children.length) {
+    const c = toolMesh.children[0];
+    if (c.geometry) c.geometry.dispose();
+    toolMesh.remove(c);
+  }
+  const fresh = createToolMesh(r);
+  while (fresh.children.length) {
+    toolMesh.add(fresh.children[0]);
+  }
+  toolMesh.userData.radius = r;
 }
 
 /** CNC work (x,y,z) → Three.js (x, z, y) */
