@@ -1,41 +1,99 @@
 /**
- * G-code parser → array of motion moves.
- * Handles real machine programs: multiple G on one line, modal G0/G1,
- * trailing decimals (X4.), G43 Z moves, unknown G codes ignored.
+ * G-code parser → motion moves.
+ * Supports: G0/G1 modal, multi-G lines, G90/G91, M30 stop,
+ * M97 Pnn Lkk local subprograms (Haas), trailing decimals.
  */
 export function parseGCode(text) {
-  const lines = text.split(/\r?\n/);
-  const result = [];
+  const rawLines = text.split(/\r?\n/);
 
-  let x = 0;
-  let y = 0;
-  let z = 50;
-  let f = 500;
-  let spindle = 0;
-  let absolute = true;
-  let tool = 0;
-  let motion = 0; // modal: 0 = rapid, 1 = feed
-  let lineNum = 0;
+  // ---- Pass 1: index N-label subprograms (body until M99) ----
+  const subs = new Map();
+  let currentSub = null;
+  let currentBody = [];
 
-  for (const raw of lines) {
-    lineNum++;
-    let line = raw.replace(/;.*$/, '');
-    line = line.replace(/\([^)]*\)/g, '');
-    line = line.trim();
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i];
+    let line = raw.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim();
     if (!line || line === '%') continue;
-    line = line.replace(/^N\d+\s*/i, '');
 
+    const nMatch = line.match(/^N(\d+)\b/i);
+    if (nMatch) {
+      if (currentSub != null) subs.set(currentSub, currentBody);
+      currentSub = parseInt(nMatch[1], 10);
+      currentBody = [];
+      const rest = line.replace(/^N\d+\s*/i, '').trim();
+      if (rest) currentBody.push({ raw, line: rest, lineNum: i + 1 });
+      continue;
+    }
+
+    if (currentSub != null) {
+      if (/\bM99\b/i.test(line)) {
+        subs.set(currentSub, currentBody);
+        currentSub = null;
+        currentBody = [];
+        continue;
+      }
+      currentBody.push({ raw, line, lineNum: i + 1 });
+    }
+  }
+  if (currentSub != null) subs.set(currentSub, currentBody);
+
+  // ---- Pass 2: walk main program, expand M97 ----
+  const mainBlocks = [];
+  let inSubDef = false;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i];
+    let line = raw.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim();
+    if (!line || line === '%') continue;
+
+    if (/^N\d+\b/i.test(line)) {
+      inSubDef = true;
+      continue;
+    }
+    if (inSubDef) {
+      if (/\bM99\b/i.test(line)) inSubDef = false;
+      continue;
+    }
+
+    if (/\bM30\b/i.test(line) || /\bM2\b/i.test(line)) break;
+
+    const m97 = line.match(/\bM97\b/i);
+    if (m97) {
+      const pMatch = line.match(/\bP(\d+)/i);
+      const lMatch = line.match(/\bL(\d+)/i);
+      const pNum = pMatch ? parseInt(pMatch[1], 10) : null;
+      const loops = lMatch ? Math.max(1, parseInt(lMatch[1], 10)) : 1;
+      if (pNum != null && subs.has(pNum)) {
+        const body = subs.get(pNum);
+        for (let rep = 0; rep < loops; rep++) {
+          for (const b of body) mainBlocks.push(b);
+        }
+      }
+      continue;
+    }
+
+    mainBlocks.push({ raw, line, lineNum: i + 1 });
+  }
+
+  return blocksToMoves(mainBlocks);
+}
+
+function blocksToMoves(blocks) {
+  const result = [];
+  let x = 0, y = 0, z = 50;
+  let f = 500, spindle = 0, tool = 0;
+  let absolute = true;
+  let motion = 0;
+
+  for (const blk of blocks) {
+    let line = blk.line.replace(/^N\d+\s*/i, '');
     const tokens = line.match(/[A-Za-z][-+]?[0-9]*\.?[0-9]*/g) || [];
     if (!tokens.length) continue;
 
     const gCodes = [];
     let m = null;
-    let nx = null;
-    let ny = null;
-    let nz = null;
-    let nf = null;
-    let ns = null;
-    let nt = null;
+    let nx = null, ny = null, nz = null, nf = null, ns = null, nt = null;
 
     for (const t of tokens) {
       const letter = t[0].toUpperCase();
@@ -43,7 +101,6 @@ export function parseGCode(text) {
       if (numStr === '' || numStr === '+' || numStr === '-') continue;
       const val = parseFloat(numStr);
       if (Number.isNaN(val)) continue;
-
       switch (letter) {
         case 'G': gCodes.push(val); break;
         case 'M': m = val; break;
@@ -61,8 +118,7 @@ export function parseGCode(text) {
       if (g === 90) absolute = true;
       else if (g === 91) absolute = false;
       else if (g === 0) motion = 0;
-      else if (g === 1) motion = 1;
-      else if (g === 2 || g === 3) motion = 1;
+      else if (g === 1 || g === 2 || g === 3) motion = 1;
     }
 
     if (nf !== null) f = nf;
@@ -87,7 +143,7 @@ export function parseGCode(text) {
 
     result.push({
       x: tx, y: ty, z: tz, f, type,
-      line: lineNum, raw: raw.trim(), spindle, tool, m
+      line: blk.lineNum, raw: (blk.raw || '').trim(), spindle, tool, m
     });
 
     x = tx; y = ty; z = tz;
