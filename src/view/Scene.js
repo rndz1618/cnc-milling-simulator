@@ -63,10 +63,6 @@ export function createScene(container) {
   grid.position.set(50, -19.9, 40);
   scene.add(grid);
 
-  const axes = new THREE.AxesHelper(28);
-  axes.position.set(0, 0.2, 0);
-  scene.add(axes);
-
   function onResize() {
     const w = container.clientWidth;
     const h = Math.max(1, container.clientHeight);
@@ -80,11 +76,6 @@ export function createScene(container) {
   return { scene, camera, renderer, controls, bed, grid, onResize };
 }
 
-/**
- * Realistic end-mill mesh.
- * radius = cutter radius mm (default 6 → Ø12).
- * Tip at local y=0 so setToolPosition places tip at programmed Z.
- */
 export function createToolMesh(radius = 6) {
   const g = new THREE.Group();
   const r = Math.max(1.0, Math.min(radius, 20));
@@ -149,7 +140,6 @@ export function createToolMesh(radius = 6) {
   return g;
 }
 
-/** Rebuild tool geometry for a new diameter (mm). */
 export function setToolDiameter(toolMesh, diameterMm) {
   const r = Math.max(1.0, (diameterMm || 12) / 2);
   while (toolMesh.children.length) {
@@ -174,6 +164,27 @@ export function setToolPosition(toolMesh, mx, my, mz) {
   toolMesh.position.set(mx, mz, my);
 }
 
+/** Work-zero marker at (0,0,0) — G54 X0 Y0 Z0 */
+export function createWorkZeroMarker() {
+  const g = new THREE.Group();
+  g.name = 'workZero';
+  const axes = new THREE.AxesHelper(20);
+  g.add(axes);
+  const plate = new THREE.Mesh(
+    new THREE.RingGeometry(1.5, 3, 24),
+    new THREE.MeshBasicMaterial({ color: 0x3fb950, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+  );
+  plate.rotation.x = -Math.PI / 2;
+  plate.position.y = 0.05;
+  g.add(plate);
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.8, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0x3fb950 })
+  );
+  g.add(dot);
+  return g;
+}
+
 function colorForZ(z) {
   if (z >= 0) return 0x44ddff;
   if (z >= -5) return 0xffdd44;
@@ -181,10 +192,6 @@ function colorForZ(z) {
   return 0xff4488;
 }
 
-/**
- * Build colored toolpath.
- * Rapids clipped to zRef+clearance so Z100 retracts don't dominate the view.
- */
 export function buildToolpathLines(moves, opts = {}) {
   const group = new THREE.Group();
   if (!moves || moves.length < 1) return group;
