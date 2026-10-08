@@ -84,4 +84,10 @@ document.querySelectorAll('.ovr-btn').forEach((btn) => {
 });
 sim.feedOvr = 1;
 sim.rapidOvr = 0.5;
-si
+sim.simSpeed = 1;
+
+if ($('btnResetView')) $('btnResetView').addEventListener('click', () => {
+  camera.position.set(160, 110, 200);
+  controls.target.set(50, 0, 40);
+  controls.update();
+});

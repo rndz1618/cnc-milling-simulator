@@ -1,10 +1,3 @@
-m.simSpeed = 1;
-
-if ($('btnResetView')) $('btnResetView').addEventListener('click', () => {
-  camera.position.set(160, 110, 200);
-  controls.target.set(50, 0, 40);
-  controls.update();
-});
 if ($('btnTopView')) $('btnTopView').addEventListener('click', () => {
   camera.position.set(50, 180, 40);
   controls.target.set(50, 0, 40);
@@ -77,4 +70,15 @@ document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
       row.querySelectorAll('input').forEach((inp) => {
         inp.value = wcsTable[wcs][inp.dataset.axis].toFixed(3);
       });
-      document.querySelectorAll
+      document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
+      row.classList.add('active-row');
+      activeWcs = wcs;
+      updateActiveCodes();
+      markTrain('partzero');
+    });
+  }
+});
+
+if ($('btnApplyWcs')) {
+  $('btnApplyWcs').addEventListener('click', () => {
+    // read inputs into table first
