@@ -1,81 +1,91 @@
 /**
- * G-code parser → motion moves.
- * Supports: G0/G1 modal, G2/G3 arcs (IJK or R, G17 XY), multi-G lines,
- * G90/G91, G54–G59 WCS, M30 stop, M97 Pnn Lkk (Haas), bare decimals (Z. → 0).
+ * G-code parser → stream entri untuk Simulator.
+ *
+ * Entri yang dihasilkan:
+ *   { type:'rapid'|'feed', x,y,z (work; machine:true untuk G53), wcs, f, spindle, tool, line, raw }
+ *   { type:'home', axes:['z'], line, raw }                    — G28
+ *   { type:'tool', tool, line, raw }                          — T.. M06
+ *   { type:'toolcomp', h, line, raw }                         — G43 H / G49
+ *   { type:'coolant', on, line, raw }                         — M08/M09
+ *   { type:'stop', optional?, end?, line, raw }               — M00/M01/M30
+ *   { type:'alarm', code, msg, line, raw }                    — kode salah: blok TIDAK dieksekusi
+ *
+ * Dukungan: G0–G3 (arc IJK/R, G17), G4, G17–G19, G20/G21 (konversi inch↔mm),
+ * G28, G40, G41/G42 (alarm: belum didukung), G43 H/G49, G53, G54–G59,
+ * G80–G83 (canned cycle drill: G98/G99), G90/G91, M0/1/3/4/5/6/8/9/30/97/99,
+ * subprogram lokal O#### + M97 P L (dialek Haas), N#### = nomor baris (bukan sub).
+ * Bare decimal: "Z." = 0, "Z.5" = 0.5.
  */
 export function parseGCode(text) {
   const rawLines = text.split(/\r?\n/);
 
+  // ---------- Pass 1: bersihkan baris, deteksi subprogram lokal (O####) ----------
+  const cleaned = [];
+  let sawMeaningful = false;
+  let mainOSeen = false;
+  let subStart = null;
   const subs = new Map();
-  let currentSub = null;
-  let currentBody = [];
 
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i];
-    let line = raw.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim();
+    const line = raw.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim();
     if (!line || line === '%') continue;
+    const lineNum = i + 1;
 
-    const nMatch = line.match(/^N(\d+)\b/i);
-    if (nMatch) {
-      if (currentSub != null) subs.set(currentSub, currentBody);
-      currentSub = parseInt(nMatch[1], 10);
-      currentBody = [];
-      const rest = line.replace(/^N\d+\s*/i, '').trim();
-      if (rest) currentBody.push({ raw, line: rest, lineNum: i + 1 });
-      continue;
-    }
-
-    if (currentSub != null) {
-      if (/\bM99\b/i.test(line)) {
-        subs.set(currentSub, currentBody);
-        currentSub = null;
-        currentBody = [];
-        continue;
+    // "O1234" sendirian: header program utama (baris pertama) ATAU awal sub lokal.
+    const oMatch = line.match(/^O(\d+)$/i);
+    if (oMatch) {
+      if (!mainOSeen && !sawMeaningful) {
+        mainOSeen = true; // header program utama — lewati
+      } else if (subStart == null) {
+        subStart = parseInt(oMatch[1], 10); // definisi sub lokal dimulai
       }
-      currentBody.push({ raw, line, lineNum: i + 1 });
+      sawMeaningful = true;
+      continue;
     }
+    sawMeaningful = true;
+
+    if (subStart != null) {
+      if (/\bM99\b/i.test(line)) {
+        subs.set(subStart, subs.get(subStart) || []);
+        subStart = null;
+      } else {
+        if (!subs.has(subStart)) subs.set(subStart, []);
+        subs.get(subStart).push({ raw, line, lineNum });
+      }
+      continue;
+    }
+    cleaned.push({ raw, line, lineNum });
   }
-  if (currentSub != null) subs.set(currentSub, currentBody);
+  if (subStart != null && !subs.has(subStart)) subs.set(subStart, []);
 
+  // ---------- Pass 2: rangkai blok utama, ekspansi M97 ----------
   const mainBlocks = [];
-  let inSubDef = false;
-  const alarms = [];
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const raw = rawLines[i];
-    let line = raw.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim();
-    if (!line || line === '%') continue;
-
-    if (/^N\d+\b/i.test(line)) {
-      inSubDef = true;
-      continue;
+  for (const blk of cleaned) {
+    if (/\bM30\b/i.test(blk.line) || /\bM2\b/i.test(blk.line)) {
+      mainBlocks.push(blk);
+      break;
     }
-    if (inSubDef) {
-      if (/\bM99\b/i.test(line)) inSubDef = false;
-      continue;
-    }
-
-    if (/\bM30\b/i.test(line) || /\bM2\b/i.test(line)) break;
-
-    const m97 = line.match(/\bM97\b/i);
-    if (m97) {
-      const pMatch = line.match(/\bP(\d+)/i);
-      const lMatch = line.match(/\bL(\d+)/i);
+    const m97s = blk.line.match(/\bM97\b/i);
+    if (m97s) {
+      const pMatch = blk.line.match(/\bP(\d+)/i);
+      const lMatch = blk.line.match(/\bL(\d+)/i);
       const pNum = pMatch ? parseInt(pMatch[1], 10) : null;
-      const loops = lMatch ? Math.max(1, parseInt(lMatch[1], 10)) : 1;
+      const loops = lMatch ? Math.max(1, Math.min(999, parseInt(lMatch[1], 10))) : 1;
       if (pNum != null && subs.has(pNum)) {
         const body = subs.get(pNum);
         for (let rep = 0; rep < loops; rep++) {
           for (const b of body) mainBlocks.push(b);
         }
+      } else {
+        mainBlocks.push(blk); // P tidak ditemukan → biarkan memunculkan alarm
       }
       continue;
     }
-
-    mainBlocks.push({ raw, line, lineNum: i + 1 });
+    mainBlocks.push(blk);
   }
 
-  return blocksToMoves(mainBlocks, alarms);
+  return blocksToMoves(mainBlocks);
 }
 
 function parseAxisNum(numStr) {
@@ -86,12 +96,12 @@ function parseAxisNum(numStr) {
 }
 
 const KNOWN_G = new Set([
-  0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 28, 40, 41, 42, 43, 49,
-  54, 55, 56, 57, 58, 59, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
-  90, 91, 98, 99
+  0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 28, 40, 41, 42, 43, 49, 53,
+  54, 55, 56, 57, 58, 59, 80, 81, 82, 83, 90, 91, 98, 99
 ]);
+const KNOWN_M = new Set([0, 1, 3, 4, 5, 6, 8, 9, 30, 97, 99]);
 
-/** Expand G2/G3 arc (G17 XY) into linear feed segments. */
+/** Ekspansi arc G2/G3 (bidang G17/XY) menjadi segmen linear. */
 function expandArc(x0, y0, z0, x1, y1, z1, i, j, r, cw, segs = 24) {
   let cx, cy;
   if (i != null || j != null) {
@@ -114,7 +124,7 @@ function expandArc(x0, y0, z0, x1, y1, z1, i, j, r, cw, segs = 24) {
   }
 
   const a0 = Math.atan2(y0 - cy, x0 - cx);
-  let a1 = Math.atan2(y1 - cy, x1 - cx);
+  const a1 = Math.atan2(y1 - cy, x1 - cx);
   let da = a1 - a0;
   if (cw) {
     while (da > 0) da -= Math.PI * 2;
@@ -140,23 +150,33 @@ function expandArc(x0, y0, z0, x1, y1, z1, i, j, r, cw, segs = 24) {
   return pts;
 }
 
-function blocksToMoves(blocks, alarms = []) {
-  const result = [];
-  let x = 0, y = 0, z = 50;
-  let f = 500, spindle = 0, tool = 0;
+function blocksToMoves(blocks) {
+  const moves = [];
+  const alarms = [];
+  // Posisi awal dalam koordinat WORK (untuk G91 tanpa referensi mesin).
+  let x = 0, y = 0, z = 0;
+  let f = 500, spindle = 0, spindleDir = 3, tool = 0;
   let absolute = true;
   let motion = 0;
+  let plane = 17;
+  let units = 'mm';
   let wcs = 'G54';
+  let retract = 'G99';
+  let cycle = null; // { g, z, r, q }
+
+  const scale = () => (units === 'in' ? 25.4 : 1);
 
   for (const blk of blocks) {
+    // Buang nomor baris N#### — hanya label, bukan subprogram.
     let line = blk.line.replace(/^N\d+\s*/i, '');
     const tokens = line.match(/[A-Za-z][-+]?[0-9]*\.?[0-9]*/g) || [];
     if (!tokens.length) continue;
 
     const gCodes = [];
-    let m = null;
+    const mCodes = [];
     let nx = null, ny = null, nz = null, nf = null, ns = null, nt = null;
-    let ni = null, nj = null, nk = null, nr = null;
+    let ni = null, nj = null, nk = null, nr = null, nq = null, np = null, nh = null, nl = null;
+    let sawG28 = false, sawG53 = false, sawCycleWord = false, group1 = false;
 
     for (const t of tokens) {
       const letter = t[0].toUpperCase();
@@ -165,41 +185,149 @@ function blocksToMoves(blocks, alarms = []) {
       if (val === null && letter !== 'G' && letter !== 'M') continue;
       switch (letter) {
         case 'G': gCodes.push(val === null ? 0 : val); break;
-        case 'M': m = val; break;
-        case 'X': nx = val; break;
-        case 'Y': ny = val; break;
-        case 'Z': nz = val; break;
-        case 'F': nf = val; break;
+        case 'M': mCodes.push(val === null ? 0 : val); break;
+        case 'X': nx = val === null ? 0 : val * scale(); break;
+        case 'Y': ny = val === null ? 0 : val * scale(); break;
+        case 'Z': nz = val === null ? 0 : val * scale(); break;
+        case 'F': nf = val === null ? 0 : val * scale(); break;
         case 'S': ns = val; break;
         case 'T': nt = val; break;
-        case 'I': ni = val; break;
-        case 'J': nj = val; break;
-        case 'K': nk = val; break;
-        case 'R': nr = val; break;
-        default: break;
+        case 'I': ni = val === null ? 0 : val * scale(); break;
+        case 'J': nj = val === null ? 0 : val * scale(); break;
+        case 'K': nk = val === null ? 0 : val * scale(); break;
+        case 'R': nr = val === null ? 0 : val * scale(); break;
+        case 'Q': nq = val === null ? 0 : val * scale(); break;
+        case 'P': np = val; break;
+        case 'H': nh = val; break;
+        case 'L': nl = val; break;
+        default: break; // O, D, dsb. — diterima parser, tidak berpengaruh gerak
       }
     }
 
+    // Blok yang men-alarm TIDAK dieksekusi geraknya (perilaku mesin asli).
+    let blockAlarm = null;
+
     for (const g of gCodes) {
-      if (g === 90) absolute = true;
-      else if (g === 91) absolute = false;
-      else if (g === 0) motion = 0;
-      else if (g === 1) motion = 1;
-      else if (g === 2) motion = 2;
-      else if (g === 3) motion = 3;
-      else if (g >= 54 && g <= 59) wcs = 'G' + g;
-      else if (!KNOWN_G.has(g) && Number.isInteger(g)) {
-        alarms.push({ line: blk.lineNum, code: 'G' + g, msg: 'Unknown G-code G' + g });
+      if (!KNOWN_G.has(g) && Number.isInteger(g)) {
+        blockAlarm = { code: 'G' + g, msg: 'UNKNOWN G-CODE G' + g, line: blk.lineNum };
+        break;
       }
+      if (g === 0 || g === 1 || g === 2 || g === 3) {
+        motion = g; group1 = true; cycle = null;
+      } else if (g === 4) {
+        // dwell: P detik — tidak menggerakkan apa pun
+      } else if (g === 17 || g === 18 || g === 19) {
+        plane = g;
+      } else if (g === 20) units = 'in';
+      else if (g === 21) units = 'mm';
+      else if (g === 28) sawG28 = true;
+      else if (g === 40) { /* cutter comp cancel — noop */ }
+      else if (g === 41 || g === 42) {
+        blockAlarm = { code: 'G' + g, msg: 'CUTTER COMP G' + g + ' NOT SUPPORTED (belum diimplementasi)', line: blk.lineNum };
+      } else if (g === 43) {
+        if (nh == null) {
+          blockAlarm = { code: 'G43', msg: 'G43 TANPA H — TOOL LENGTH OFFSET HILANG', line: blk.lineNum };
+        }
+      } else if (g === 49) {
+        moves.push({ type: 'toolcomp', h: 0, line: blk.lineNum, raw: blk.raw.trim() });
+      } else if (g === 53) sawG53 = true;
+      else if (g >= 54 && g <= 59) wcs = 'G' + g;
+      else if (g === 80) cycle = null;
+      else if (g === 81 || g === 82 || g === 83) {
+        sawCycleWord = true;
+        cycle = { g, z: nz, r: nr, q: nq, f: nf != null ? nf : f };
+      } else if (g === 90) absolute = true;
+      else if (g === 91) absolute = false;
+      else if (g === 98) retract = 'G98';
+      else if (g === 99) retract = 'G99';
+    }
+    if (blockAlarm) {
+      alarms.push(blockAlarm);
+      moves.push({ type: 'alarm', ...blockAlarm, raw: blk.raw.trim() });
+      continue; // blok tidak dieksekusi
     }
 
     if (nf !== null) f = nf;
     if (ns !== null) spindle = ns;
     if (nt !== null) tool = nt;
-    if (m === 5) spindle = 0;
+
+    const meta = () => ({
+      f, spindle, spindleDir, tool, wcs, line: blk.lineNum, raw: (blk.raw || '').trim()
+    });
+
+    for (const m of mCodes) {
+      if (!KNOWN_M.has(m) && Number.isInteger(m)) {
+        const a = { code: 'M' + m, msg: 'UNKNOWN M-CODE M' + m, line: blk.lineNum };
+        alarms.push(a);
+        moves.push({ type: 'alarm', ...a, raw: blk.raw.trim() });
+        continue;
+      }
+      if (m === 3 || m === 4) spindleDir = m;
+      else if (m === 5) spindle = 0;
+      else if (m === 6) {
+        if (nt != null) moves.push({ type: 'tool', tool: nt, ...meta() });
+        else {
+          const a = { code: 'M6', msg: 'M06 TANPA T — NOMOR TOOL HILANG', line: blk.lineNum };
+          alarms.push(a);
+          moves.push({ type: 'alarm', ...a, raw: blk.raw.trim() });
+        }
+      } else if (m === 8) moves.push({ type: 'coolant', on: true, line: blk.lineNum, raw: blk.raw.trim() });
+      else if (m === 9) moves.push({ type: 'coolant', on: false, line: blk.lineNum, raw: blk.raw.trim() });
+      else if (m === 0) moves.push({ type: 'stop', line: blk.lineNum, raw: blk.raw.trim() });
+      else if (m === 1) moves.push({ type: 'stop', optional: true, line: blk.lineNum, raw: blk.raw.trim() });
+      else if (m === 30 || m === 2) moves.push({ type: 'stop', end: true, line: blk.lineNum, raw: blk.raw.trim() });
+    }
+
+    // G43 H —— aktifkan tool length compensation (validasi H di tabel dilakukan runtime).
+    if (gCodes.includes(43)) {
+      moves.push({ type: 'toolcomp', h: nh, ...meta() });
+    }
+
+    if (sawG28) {
+      const axes = [];
+      if (nx !== null) axes.push('x');
+      if (ny !== null) axes.push('y');
+      if (nz !== null) axes.push('z');
+      moves.push({ type: 'home', axes: axes.length ? axes : ['z'], ...meta() });
+      // Kata sumbu pada blok G28 = titik antara, bukan gerak modal — tidak diemit.
+      continue;
+    }
 
     const hasAxis = nx !== null || ny !== null || nz !== null;
+
+    // Canned cycle: blok definisi (G81–G83 … Z R) maupun lanjutan modal (hanya X/Y).
+    if (cycle && !group1 && hasAxis) {
+      if (cycle.z == null || cycle.r == null) {
+        const a = { code: 'G' + cycle.g, msg: 'CYCLE G' + cycle.g + ' TANPA Z/R — PARAMETER KURANG', line: blk.lineNum };
+        alarms.push(a);
+        moves.push({ type: 'alarm', ...a, raw: blk.raw.trim() });
+        cycle = null;
+        continue;
+      }
+      const hx = nx !== null ? (absolute ? nx : x + nx) : x;
+      const hy = ny !== null ? (absolute ? ny : y + ny) : y;
+      expandCycleHole(moves, cycle, retract, x, y, z, hx, hy, meta);
+      x = hx; y = hy; z = retract === 'G98' ? z : cycle.r;
+      continue;
+    }
+
     if (!hasAxis) continue;
+    if (sawG53) {
+      // G53 non-modal: koordinat mesin langsung untuk blok ini saja.
+      // Sumbu yang tidak ditulis tidak bergerak (ditandai ax, dipatch di runtime).
+      const tx = nx !== null ? nx : x;
+      const ty = ny !== null ? ny : y;
+      const tz = nz !== null ? nz : z;
+      const ax = { x: nx !== null, y: ny !== null, z: nz !== null };
+      if (!(tx === x && ty === y && tz === z)) {
+        moves.push({
+          type: motion === 0 ? 'rapid' : 'feed',
+          x: tx, y: ty, z: tz, machine: true, ax, ...meta()
+        });
+      }
+      x = tx; y = ty; z = tz;
+      continue;
+    }
 
     const tx = nx !== null ? (absolute ? nx : x + nx) : x;
     const ty = ny !== null ? (absolute ? ny : y + ny) : y;
@@ -207,32 +335,65 @@ function blocksToMoves(blocks, alarms = []) {
 
     if (tx === x && ty === y && tz === z && motion !== 2 && motion !== 3) continue;
 
-    const meta = {
-      f, line: blk.lineNum, raw: (blk.raw || '').trim(),
-      spindle, tool, m, wcs
-    };
-
     if (motion === 2 || motion === 3) {
+      if (plane !== 17) {
+        const a = { code: 'G' + motion, msg: 'ARC HANYA DIDUKUNG DI G17 (XY)', line: blk.lineNum };
+        alarms.push(a);
+        moves.push({ type: 'alarm', ...a, raw: blk.raw.trim() });
+        continue;
+      }
       const pts = expandArc(x, y, z, tx, ty, tz, ni, nj, nr, motion === 2);
       for (const p of pts) {
-        result.push({ x: p.x, y: p.y, z: p.z, type: 'feed', ...meta });
+        moves.push({ x: p.x, y: p.y, z: p.z, type: 'feed', ...meta() });
       }
     } else {
       const type = motion === 0 ? 'rapid' : 'feed';
-      result.push({ x: tx, y: ty, z: tz, type, ...meta });
+      moves.push({ x: tx, y: ty, z: tz, type, ...meta() });
     }
-
     x = tx; y = ty; z = tz;
   }
 
+  // Estimasi waktu tampilan (Simulator memakai profil mesin saat berjalan).
   let totalTime = 0;
-  let px = 0, py = 0, pz = 50;
-  for (const mv of result) {
+  let px = 0, py = 0, pz = 0;
+  for (const mv of moves) {
+    if (mv.type !== 'rapid' && mv.type !== 'feed') continue;
     const dist = Math.sqrt((mv.x - px) ** 2 + (mv.y - py) ** 2 + (mv.z - pz) ** 2);
-    const feed = mv.type === 'rapid' ? 5000 : (mv.f || 500);
+    const feed = mv.type === 'rapid' ? 8000 : (mv.f || 500);
     totalTime += (dist / Math.max(1, feed)) * 60;
     px = mv.x; py = mv.y; pz = mv.z;
   }
 
-  return { moves: result, totalTime, alarms };
+  return { moves, totalTime, alarms };
+}
+
+/** Satu lubang canned cycle (G81/G82/G83) → serangkaian gerakan. */
+function expandCycleHole(moves, cycle, retract, x0, y0, z0, hx, hy, meta) {
+  const f = cycle.f || 500;
+  // 1. rapid XY ke lubang (di level Z saat ini)
+  if (hx !== x0 || hy !== y0) moves.push({ x: hx, y: hy, z: z0, type: 'rapid', ...meta() });
+  // 2. rapid ke R — dilewati jika sudah berada di R (G99 traverse antar lubang)
+  if (Math.abs(z0 - cycle.r) > 1e-9) {
+    moves.push({ x: hx, y: hy, z: cycle.r, type: 'rapid', ...meta() });
+  }
+  // 3. masuk
+  if (cycle.g === 83 && cycle.q > 0) {
+    let zc = cycle.r;
+    while (zc > cycle.z + 1e-9) {
+      const zn = Math.max(cycle.z, zc - cycle.q);
+      moves.push({ x: hx, y: hy, z: zn, type: 'feed', ...meta(), f });
+      zc = zn;
+      if (zc > cycle.z + 1e-9) {
+        moves.push({ x: hx, y: hy, z: cycle.r, type: 'rapid', ...meta() });   // retract penuh
+        moves.push({ x: hx, y: hy, z: zc + 0.25, type: 'rapid', ...meta() }); // turun cepat lagi
+      }
+    }
+  } else {
+    moves.push({ x: hx, y: hy, z: cycle.z, type: 'feed', ...meta(), f });
+  }
+  // 4. keluar ke level retract
+  const out = retract === 'G98' ? z0 : cycle.r;
+  if (Math.abs(out - cycle.z) > 1e-9) {
+    moves.push({ x: hx, y: hy, z: out, type: 'rapid', ...meta() });
+  }
 }
