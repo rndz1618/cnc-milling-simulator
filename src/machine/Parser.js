@@ -1,7 +1,7 @@
 /**
  * G-code parser → motion moves.
- * Supports: G0/G1 modal, multi-G lines, G90/G91, G54–G59 WCS,
- * M30 stop, M97 Pnn Lkk local subprograms (Haas), bare decimals (Z. → 0).
+ * Supports: G0/G1 modal, G2/G3 arcs (IJK or R, G17 XY), multi-G lines,
+ * G90/G91, G54–G59 WCS, M30 stop, M97 Pnn Lkk (Haas), bare decimals (Z. → 0).
  */
 export function parseGCode(text) {
   const rawLines = text.split(/\r?\n/);
@@ -91,6 +91,55 @@ const KNOWN_G = new Set([
   90, 91, 98, 99
 ]);
 
+/** Expand G2/G3 arc (G17 XY) into linear feed segments. */
+function expandArc(x0, y0, z0, x1, y1, z1, i, j, r, cw, segs = 24) {
+  let cx, cy;
+  if (i != null || j != null) {
+    cx = x0 + (i || 0);
+    cy = y0 + (j || 0);
+  } else if (r != null && r !== 0) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const chord = Math.sqrt(dx * dx + dy * dy);
+    if (chord < 1e-9) return [{ x: x1, y: y1, z: z1 }];
+    const rr = Math.abs(r);
+    const h2 = rr * rr - (chord * 0.5) * (chord * 0.5);
+    const h = Math.sqrt(Math.max(0, h2));
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    const nx = -dy / chord, ny = dx / chord;
+    const side = (r >= 0) === cw ? -1 : 1;
+    cx = mx + side * h * nx;
+    cy = my + side * h * ny;
+  } else {
+    return [{ x: x1, y: y1, z: z1 }];
+  }
+
+  const a0 = Math.atan2(y0 - cy, x0 - cx);
+  let a1 = Math.atan2(y1 - cy, x1 - cx);
+  let da = a1 - a0;
+  if (cw) {
+    while (da > 0) da -= Math.PI * 2;
+    if (Math.abs(da) < 1e-9) da = -Math.PI * 2;
+  } else {
+    while (da < 0) da += Math.PI * 2;
+    if (Math.abs(da) < 1e-9) da = Math.PI * 2;
+  }
+
+  const rad = Math.sqrt((x0 - cx) ** 2 + (y0 - cy) ** 2) || 1;
+  const n = Math.max(8, Math.min(72, Math.ceil(Math.abs(da) / (Math.PI / segs))));
+  const pts = [];
+  for (let s = 1; s <= n; s++) {
+    const t = s / n;
+    const ang = a0 + da * t;
+    pts.push({
+      x: cx + rad * Math.cos(ang),
+      y: cy + rad * Math.sin(ang),
+      z: z0 + (z1 - z0) * t
+    });
+  }
+  pts[pts.length - 1] = { x: x1, y: y1, z: z1 };
+  return pts;
+}
+
 function blocksToMoves(blocks, alarms = []) {
   const result = [];
   let x = 0, y = 0, z = 50;
@@ -107,6 +156,7 @@ function blocksToMoves(blocks, alarms = []) {
     const gCodes = [];
     let m = null;
     let nx = null, ny = null, nz = null, nf = null, ns = null, nt = null;
+    let ni = null, nj = null, nk = null, nr = null;
 
     for (const t of tokens) {
       const letter = t[0].toUpperCase();
@@ -114,11 +164,7 @@ function blocksToMoves(blocks, alarms = []) {
       const val = parseAxisNum(numStr);
       if (val === null && letter !== 'G' && letter !== 'M') continue;
       switch (letter) {
-        case 'G': {
-          const g = val === null ? 0 : val;
-          gCodes.push(g);
-          break;
-        }
+        case 'G': gCodes.push(val === null ? 0 : val); break;
         case 'M': m = val; break;
         case 'X': nx = val; break;
         case 'Y': ny = val; break;
@@ -126,6 +172,10 @@ function blocksToMoves(blocks, alarms = []) {
         case 'F': nf = val; break;
         case 'S': ns = val; break;
         case 'T': nt = val; break;
+        case 'I': ni = val; break;
+        case 'J': nj = val; break;
+        case 'K': nk = val; break;
+        case 'R': nr = val; break;
         default: break;
       }
     }
@@ -134,7 +184,9 @@ function blocksToMoves(blocks, alarms = []) {
       if (g === 90) absolute = true;
       else if (g === 91) absolute = false;
       else if (g === 0) motion = 0;
-      else if (g === 1 || g === 2 || g === 3) motion = 1;
+      else if (g === 1) motion = 1;
+      else if (g === 2) motion = 2;
+      else if (g === 3) motion = 3;
       else if (g >= 54 && g <= 59) wcs = 'G' + g;
       else if (!KNOWN_G.has(g) && Number.isInteger(g)) {
         alarms.push({ line: blk.lineNum, code: 'G' + g, msg: 'Unknown G-code G' + g });
@@ -149,26 +201,28 @@ function blocksToMoves(blocks, alarms = []) {
     const hasAxis = nx !== null || ny !== null || nz !== null;
     if (!hasAxis) continue;
 
-    let type = motion === 0 ? 'rapid' : 'feed';
-    for (const g of gCodes) {
-      if (g === 0) type = 'rapid';
-      if (g === 1 || g === 2 || g === 3) type = 'feed';
-    }
-
     const tx = nx !== null ? (absolute ? nx : x + nx) : x;
     const ty = ny !== null ? (absolute ? ny : y + ny) : y;
     const tz = nz !== null ? (absolute ? nz : z + nz) : z;
 
-    if (tx === x && ty === y && tz === z) continue;
+    if (tx === x && ty === y && tz === z && motion !== 2 && motion !== 3) continue;
 
-    result.push({
-      x: tx, y: ty, z: tz, f, type,
-      line: blk.lineNum, raw: (blk.raw || '').trim(),
+    const meta = {
+      f, line: blk.lineNum, raw: (blk.raw || '').trim(),
       spindle, tool, m, wcs
-    });
+    };
+
+    if (motion === 2 || motion === 3) {
+      const pts = expandArc(x, y, z, tx, ty, tz, ni, nj, nr, motion === 2);
+      for (const p of pts) {
+        result.push({ x: p.x, y: p.y, z: p.z, type: 'feed', ...meta });
+      }
+    } else {
+      const type = motion === 0 ? 'rapid' : 'feed';
+      result.push({ x: tx, y: ty, z: tz, type, ...meta });
+    }
 
     x = tx; y = ty; z = tz;
-    motion = type === 'rapid' ? 0 : 1;
   }
 
   let totalTime = 0;
