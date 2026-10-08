@@ -1,8 +1,9 @@
-// v0.7.0-rA3 Tahap2 — static chunk loader (same-origin, no Vite bundle)
+// v0.8.0 — static chunk loader (A highlight, B alarm, C tool auto, D localStorage)
 const base = new URL('.', import.meta.url).href;
 async function boot() {
   const urls = [
-    './main_body_a.txt',
+    './main_body_a1.txt',
+    './main_body_a2.txt',
     './main_bb0.txt',
     './main_bb1.txt',
     './main_bb2.txt',
