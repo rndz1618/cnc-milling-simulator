@@ -1,11 +1,14 @@
-// v0.7.0-rA3 Fix3 — chunk loader (no blob, script type=module)
+// v0.7.0-rA3 Fix3b — 12-chunk loader (script type=module, absolute imports)
 const base = new URL('.', import.meta.url).href;
+const N = 12;
 async function boot() {
   const parts = await Promise.all(
-    [0, 1, 2].map(i => fetch(new URL('./chunks/c' + i + '.txt', import.meta.url)).then(r => {
-      if (!r.ok) throw new Error('chunk c' + i + ' HTTP ' + r.status);
-      return r.text();
-    }))
+    Array.from({ length: N }, (_, i) =>
+      fetch(new URL('./chunks/s' + i + '.txt', import.meta.url)).then(r => {
+        if (!r.ok) throw new Error('chunk s' + i + ' HTTP ' + r.status);
+        return r.text();
+      })
+    )
   );
   let code = parts.join('');
   code = code.replace(/from\s+['"](\.[^'"]+)['"]/g, (_, rel) => {
@@ -16,10 +19,6 @@ async function boot() {
   const s = document.createElement('script');
   s.type = 'module';
   s.textContent = code;
-  s.onerror = (e) => {
-    document.body.insertAdjacentHTML('beforeend',
-      '<pre style="color:#f55;padding:12px">Module error: ' + e + '</pre>');
-  };
   document.head.appendChild(s);
 }
 boot().catch(e => {
