@@ -1,6 +1,9 @@
-.className = 'sb-item ok';
-      }
-      if ($('sbMsg')) $('sbMsg').textContent = 'ALARM — history kosong';
+      if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — Active Codes';
+    } else if (sk === 'f3') {
+      showAlarmPanel();
+      if ($('sbMsg')) $('sbMsg').textContent = alarmHistory.length
+        ? ('ALARM — ' + alarmHistory.length + ' pesan')
+        : 'ALARM — NO ALARMS';
     } else if (sk === 'f4') {
       setGraphVisible(!graphVisible);
     } else if (sk === 'f5') {
@@ -94,4 +97,3 @@ function animate(now) {
   }
   controls.update();
   renderer.render(scene, camera);
-  re
