@@ -1,11 +1,14 @@
-// v0.7.0-rA3 local full main (2-part, script module, no blob CDN pin)
+// v0.7.0-rA3 local main (body_a + body_b chunks, script module)
 const base = new URL('.', import.meta.url).href;
 async function boot() {
-  const [a, b] = await Promise.all([
-    fetch(new URL('./main_body_a.txt', import.meta.url)).then(r => { if (!r.ok) throw new Error('body_a ' + r.status); return r.text(); }),
-    fetch(new URL('./main_body_b.txt', import.meta.url)).then(r => { if (!r.ok) throw new Error('body_b ' + r.status); return r.text(); })
-  ]);
-  let code = a + b;
+  const urls = ['./main_body_a.txt', './main_bb0.txt', './main_bb1.txt', './main_bb2.txt', './main_bb3.txt', './main_bb4.txt'];
+  const parts = await Promise.all(urls.map(u =>
+    fetch(new URL(u, import.meta.url)).then(r => {
+      if (!r.ok) throw new Error(u + ' HTTP ' + r.status);
+      return r.text();
+    })
+  ));
+  let code = parts.join('');
   code = code.replace(/from\s+['"](\.[^'"]+)['"]/g, (_, rel) => "from '" + new URL(rel, base).href + "'");
   code = code.replace(/from\s+['"]three['"]/g, "from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js'");
   const s = document.createElement('script');
