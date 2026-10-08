@@ -1,0 +1,223 @@
+function updateActiveCodes() {
+  const codes = $('activeCodes');
+  if (!codes) return;
+  const chips = [];
+  chips.push('<span class="code-chip">G90</span>');
+  chips.push('<span class="code-chip accent">' + activeWcs + '</span>');
+  chips.push('<span class="code-chip">G17</span>');
+  chips.push('<span class="code-chip">G21</span>');
+  if (machine.feed > 0) {
+    chips.push('<span class="code-chip">F' + Math.round(machine.feed) + '</span>');
+  }
+  codes.innerHTML = chips.join('');
+
+  const ti = $('activeToolInfo');
+  if (ti) {
+    const sp = machine.spindleOn
+      ? '<span class="code-chip on">M3 S' + (machine.spindle || 0) + '</span>'
+      : '<span class="code-chip">M5</span>';
+    ti.innerHTML =
+      '<span class="code-chip accent">T' + (machine.tool || 1) + '</span>' +
+      '<span class="code-chip">H' + String(machine.tool || 1).padStart(2, '0') + '</span>' +
+      '<span class="code-chip">D' + String(machine.tool || 1).padStart(2, '0') + '</span>' +
+      sp;
+  }
+
+  if ($('hdrSpindle')) {
+    $('hdrSpindle').textContent = machine.spindleOn
+      ? 'S' + (machine.spindle || 0)
+      : 'S OFF';
+    $('hdrSpindle').style.color = machine.spindleOn ? '#3fb950' : '';
+  }
+}
+
+function updateStatusBar() {
+  const flags = [];
+  if (sim.singleBlock) flags.push('SINGLE BLOCK');
+  if (sim.dryRun) flags.push('DRY RUN');
+  if (sim.playing) flags.push('CYCLE ON');
+  if ($('sbFlags')) $('sbFlags').textContent = flags.length ? flags.join(' · ') : '—';
+  if ($('hdrMode')) $('hdrMode').textContent = currentMode.toUpperCase();
+}
+
+function refreshUI() {
+  if (machine.tool && toolTable[machine.tool] && lastToolDia !== toolTable[machine.tool].dia && machine.tool !== activeTool) {
+    applyToolFromTable(machine.tool);
+    activeTool = machine.tool;
+  } else if (machine.tool && machine.tool !== activeTool && toolTable[machine.tool]) {
+    applyToolFromTable(machine.tool);
+    activeTool = machine.tool;
+  }
+  checkSoftLimits();
+
+  if (droMode === 'machine') {
+    const mc = typeof machineCoords === 'function' ? machineCoords(machine) : {
+      x: machine.x + (machine.g54?.x || 0),
+      y: machine.y + (machine.g54?.y || 0),
+      z: machine.z + (machine.g54?.z || 0) + (machine.toolLength || 0)
+    };
+    if ($('droX')) $('droX').textContent = fmt(mc.x);
+    if ($('droY')) $('droY').textContent = fmt(mc.y);
+    if ($('droZ')) $('droZ').textContent = fmt(mc.z);
+  } else {
+    if ($('droX')) $('droX').textContent = fmt(machine.x);
+    if ($('droY')) $('droY').textContent = fmt(machine.y);
+    if ($('droZ')) $('droZ').textContent = fmt(machine.z);
+  }
+
+  if ($('simStatus')) {
+    $('simStatus').textContent = sim.playing
+      ? 'RUN'
+      : (sim.index >= sim.moves.length && sim.moves.length ? 'DONE' : 'IDLE');
+  }
+  if ($('simTool')) {
+    $('simTool').textContent = 'T' + (machine.tool || 1) + ' Ø' + (machine.toolDiameter || 6);
+  }
+  if ($('stockLeft')) {
+    $('stockLeft').textContent = Math.round(stock.remainingRatio * 100) + '%';
+  }
+
+  const pct = sim.moves.length ? Math.min(100, (sim.index / sim.moves.length) * 100) : 0;
+  if ($('progressBar')) $('progressBar').style.width = pct + '%';
+  if ($('progressText')) $('progressText').textContent = Math.round(pct) + '%';
+
+  const total = sim.totalTime || 1;
+  const elapsed = sim.elapsed || 0;
+  const fmtT = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  };
+  if ($('timeText')) $('timeText').textContent = fmtT(elapsed) + ' / ' + fmtT(total);
+  if ($('hdrTime')) $('hdrTime').textContent = fmtT(elapsed);
+
+  setToolPosition(toolMesh, machine.x, machine.y, machine.z);
+  if (machine.toolDiameter && machine.toolDiameter !== lastToolDia) {
+    lastToolDia = machine.toolDiameter;
+    setToolDiameter(toolMesh, lastToolDia);
+  }
+  updateActiveCodes();
+  updateStatusBar();
+
+  if (toolpathGroup) toolpathGroup.visible = graphVisible && !sim.playing;
+
+  if ($('btnPlay')) $('btnPlay').disabled = sim.playing;
+  if ($('btnPause')) $('btnPause').disabled = !sim.playing;
+  if ($('btnStop')) $('btnStop').disabled = !sim.playing && sim.index === 0;
+}
+
+function highlightLine(lineNum) {
+  const info = $('lineInfo');
+  if (info) {
+    info.textContent = lineNum != null ? 'Baris aktif: ' + lineNum : 'Baris aktif: —';
+    info.classList.toggle('line-live', lineNum != null && sim && sim.playing);
+  }
+  if (lineNum === lastActiveLine) return;
+  lastActiveLine = lineNum;
+  const lines = document.querySelectorAll('.gline');
+  let activeEl = null;
+  lines.forEach((el) => {
+    const ln = +el.dataset.line;
+    el.classList.remove('active', 'done');
+    if (lineNum != null) {
+      if (ln < lineNum) el.classList.add('done');
+      if (ln === lineNum) {
+        el.classList.add('active');
+        activeEl = el;
+      }
+    }
+  });
+  if (activeEl) {
+    activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+
+function showLinesView(text) {
+  const lines = text.split(/\r?\n/);
+  const wrap = $('gcodeLines');
+  if (!wrap) return;
+  wrap.innerHTML = lines.map((t, i) =>
+    '<div class="gline" data-line="' + (i + 1) + '"><span class="ln">' + (i + 1) +
+    '</span><span class="tx">' + t.replace(/</g, '&lt;') + '</span></div>'
+  ).join('');
+  if ($('gcodeInput')) $('gcodeInput').style.display = 'none';
+  wrap.style.display = 'block';
+}
+
+function showEditView() {
+  if ($('gcodeInput')) $('gcodeInput').style.display = 'block';
+  if ($('gcodeLines')) $('gcodeLines').style.display = 'none';
+}
+
+function loadProgram() {
+  const text = ($('gcodeInput') && $('gcodeInput').value) || SAMPLE;
+  const parsed = parseGCode(text);
+  const moves = parsed.moves || [];
+  const totalTime = parsed.totalTime || 0;
+  if (parsed.alarms && parsed.alarms.length) {
+    parsed.alarms.forEach((a) => pushAlarm(a.msg, a.line));
+  } else if ($('sbAlarm') && !alarmHistory.length) {
+    $('sbAlarm').textContent = 'NO ALARMS';
+    $('sbAlarm').className = 'sb-item ok';
+  }
+  allMoves = moves;
+  sim.loadMoves(moves, totalTime);
+  if ($('lineCount')) $('lineCount').textContent = moves.length + ' gerakan';
+
+  const firstTool = moves.find((m) => m.tool)?.tool;
+  if (firstTool && toolTable[firstTool]) {
+    applyToolFromTable(firstTool);
+    activeTool = firstTool;
+    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+      row.classList.toggle('active-row', +row.dataset.tool === +firstTool);
+    });
+  }
+
+  disposeGroup(toolpathGroup);
+  toolpathGroup = null;
+  disposeGroup(trailGroup);
+  trailGroup = null;
+
+  toolpathGroup = buildToolpathLines(moves);
+  toolpathGroup.visible = graphVisible;
+  scene.add(toolpathGroup);
+
+  const autoFit = $('chkAutoFit') && $('chkAutoFit').checked;
+  if (autoFit && moves.length) {
+    const toolR = (machine.toolDiameter || 12) / 2;
+    const b = boundsFromMoves(moves, { toolRadius: toolR });
+    if (b) {
+      stock.resize(b, scene);
+      if (bed) {
+        bed.position.set(b.centerX, b.originZ - 5, b.centerY);
+        bed.scale.set(Math.max(1, b.sizeX / 240), 1, Math.max(1, b.sizeY / 200));
+      }
+      if (grid) grid.position.set(b.centerX, b.originZ + 0.1, b.centerY);
+      controls.target.set(b.centerX, b.centerZ, b.centerY);
+      const span = Math.max(b.sizeX, b.sizeY, b.sizeZ * 2);
+      camera.position.set(
+        b.centerX + span * 0.9,
+        b.centerZ + span * 0.7,
+        b.centerY + span * 1.1
+      );
+      controls.update();
+      if ($('stockSizeLabel')) $('stockSizeLabel').textContent = formatStockSize(b);
+      if ($('sbMsg')) $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b);
+    }
+  }
+
+  stock.reset();
+  stock.updateMesh(scene, true);
+  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
+  showLinesView(text);
+  refreshUI();
+}
+
+function jogAxis(axis, dir) {
+  if (currentMode !== 'setup') return;
+  machine[axis] += dir * jogInc;
+  if (axis === 'x') machine.x = Math.max(-200, Math.min(200, machine.x));
+  if (axis === 'y') machine.y = Math.max(-200, Math.min(200, machine.y));
+  if (axis === 'z') machine.z = Math.max(-80, Math.min(200, machine.z));
+  refreshUI();
+}
