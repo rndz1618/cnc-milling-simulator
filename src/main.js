@@ -1,23 +1,32 @@
+// v0.9.0 — mesin koordinat mesin (Tahap 1+3+2)
+// Semua posisi = koordinat MESIN. DRO WORK = machine − offset WCS.
 import { VoxelStock } from './stock/VoxelStock.js';
-import { boundsFromMoves, formatStockSize } from './stock/fitStock.js';
+import { boundsFromPoints, formatStockSize } from './stock/fitStock.js';
 import { parseGCode } from './machine/Parser.js';
-import { createMachineState, updateWorkCoords, machineCoords } from './machine/MachineState.js';
+import {
+  createMachineState,
+  workCoords,
+  machineCoords,
+  moveTarget,
+  MACHINE_PROFILE,
+  WCS_NAMES
+} from './machine/MachineState.js';
 import { Simulator } from './sim/Simulator.js';
 import {
   createScene,
   createToolMesh,
-  setToolDiameter,
+  setToolGeometry,
   setToolPosition,
   buildToolpathLines,
-  createWorkZeroMarker
+  createWorkZeroMarker,
+  createVise
 } from './view/Scene.js';
 import * as THREE from 'three';
 import {
   trainState, markTrain, openTraining, closeTraining, resetTraining, renderTrainSteps
 } from './train.js';
 
-const SAMPLE = `; Contour + Pocket – Stock 100x80x20 | Tool D6
-; Z0 = top of stock
+const SAMPLE = `; Contour + Pocket — Tool D6 | Z0 = top of stock (G54)
 G21 G90 G17 G54
 T1 M6
 S12000 M3
@@ -66,56 +75,61 @@ M30
 const container = document.getElementById('canvas-container');
 const { scene, camera, renderer, controls, bed, grid } = createScene(container);
 
+// ---------- Stock (ruang mesin) ----------
 const stock = new VoxelStock({
   sizeX: 100, sizeY: 80, sizeZ: 20, res: 1.0,
-  originX: 0, originY: 0, originZ: -20
+  originX: -50, originY: -40, originZ: -20
 });
 stock.updateMesh(scene, true);
 
-const toolMesh = createToolMesh(6);
+const stockSetup = {
+  placement: 'top-center', // 'top-center' | 'top-corner' | 'custom'
+  sizeX: 100, sizeY: 80, sizeZ: 20,
+  originX: -50, originY: -40, originZ: -20
+};
+
+let viseGroup = null;
+let wcsMarkersGroup = null;
+
+// ---------- Tool ----------
+const toolMesh = createToolMesh({ diameter: 12, flute: 36, overall: 100 });
 scene.add(toolMesh);
 
-const workZeroMarker = createWorkZeroMarker();
-scene.add(workZeroMarker);
-
-let toolpathGroup = null;
-let trailGroup = null;
-let graphVisible = true;
-let allMoves = [];
-
-const machine = createMachineState();
-machine.toolDiameter = 12;
-
-const wcsTable = {
-  G54: { x: 0, y: 0, z: 0 },
-  G55: { x: 0, y: 0, z: 0 },
-  G56: { x: 0, y: 0, z: 0 }
-};
-let activeWcs = 'G54';
 const toolTable = {
-  1: { length: 0, dia: 6, type: 'End Mill' },
-  2: { length: 0, dia: 10, type: 'End Mill' },
-  3: { length: 0, dia: 12, type: 'End Mill' }
+  1: { length: 0, dia: 6, flute: 18, overall: 80, type: 'End Mill' },
+  2: { length: 0, dia: 10, flute: 30, overall: 95, type: 'End Mill' },
+  3: { length: 0, dia: 12, flute: 36, overall: 100, type: 'End Mill' }
 };
+
+// ---------- State ----------
+const machine = createMachineState();
 let activeTool = 1;
 let droMode = 'work';
 let jogInc = 0.1;
 let currentMode = 'edit';
-let lastToolDia = 12;
 let lastActiveLine = null;
 let alarmHistory = [];
+let toolpathGroup = null;
+let trailGroup = null;
+let graphVisible = true;
+let allMoves = [];        // entri parser (work coords + tag)
+let machineMoves = [];    // entri + target machine (untuk preview/trail/fit)
+
 const LS_WCS = 'cnc-sim-wcs';
 const LS_TOOLS = 'cnc-sim-tools';
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => (n ?? 0).toFixed(3);
 
 function loadPersistedOffsets() {
   try {
     const w = JSON.parse(localStorage.getItem(LS_WCS) || 'null');
     if (w && typeof w === 'object') {
-      for (const k of Object.keys(wcsTable)) {
-        if (w[k]) {
-          wcsTable[k].x = +w[k].x || 0;
-          wcsTable[k].y = +w[k].y || 0;
-          wcsTable[k].z = +w[k].z || 0;
+      for (const k of WCS_NAMES) {
+        if (w[k] && machine.wcs[k]) {
+          machine.wcs[k].x = +w[k].x || 0;
+          machine.wcs[k].y = +w[k].y || 0;
+          machine.wcs[k].z = +w[k].z || 0;
         }
       }
     }
@@ -125,6 +139,8 @@ function loadPersistedOffsets() {
         if (t[k]) {
           toolTable[k].length = +t[k].length || 0;
           toolTable[k].dia = +t[k].dia || toolTable[k].dia;
+          toolTable[k].flute = +t[k].flute || toolTable[k].flute;
+          toolTable[k].overall = +t[k].overall || toolTable[k].overall;
         }
       }
     }
@@ -133,32 +149,51 @@ function loadPersistedOffsets() {
 
 function savePersistedOffsets() {
   try {
-    localStorage.setItem(LS_WCS, JSON.stringify(wcsTable));
+    localStorage.setItem(LS_WCS, JSON.stringify(machine.wcs));
     localStorage.setItem(LS_TOOLS, JSON.stringify(toolTable));
   } catch (_) {}
 }
 
 function syncOffsetInputsFromTables() {
   document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
-    const wcs = row.dataset.wcs;
-    const o = wcsTable[wcs];
+    const o = machine.wcs[row.dataset.wcs];
     if (!o) return;
     row.querySelectorAll('input').forEach((inp) => {
       const ax = inp.dataset.axis;
-      if (ax && o[ax] != null) inp.value = o[ax];
+      if (ax) inp.value = o[ax];
     });
   });
   document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
-    const tn = row.dataset.tool;
-    const t = toolTable[tn];
+    const t = toolTable[row.dataset.tool];
     if (!t) return;
     row.querySelectorAll('input').forEach((inp) => {
-      if (inp.dataset.field === 'length') inp.value = t.length;
-      if (inp.dataset.field === 'dia') inp.value = t.dia;
+      const f = inp.dataset.field;
+      if (f && t[f] != null) inp.value = t[f];
     });
   });
+  if ($('stockX')) $('stockX').value = stockSetup.sizeX;
+  if ($('stockY')) $('stockY').value = stockSetup.sizeY;
+  if ($('stockZ')) $('stockZ').value = stockSetup.sizeZ;
+  syncStockPlacementInputs();
 }
 
+function syncStockPlacementInputs() {
+  const sel = $('stockPlacement');
+  if (sel) sel.value = stockSetup.placement;
+  const custom = stockSetup.placement === 'custom';
+  ['stockOx', 'stockOy', 'stockOz'].forEach((id) => {
+    const el = $(id);
+    if (el) {
+      el.disabled = !custom;
+      el.parentElement.style.opacity = custom ? '1' : '0.45';
+    }
+  });
+  if ($('stockOx')) $('stockOx').value = stockSetup.originX;
+  if ($('stockOy')) $('stockOy').value = stockSetup.originY;
+  if ($('stockOz')) $('stockOz').value = stockSetup.originZ;
+}
+
+// ---------- Alarm ----------
 function pushAlarm(msg, line) {
   const entry = { t: new Date().toLocaleTimeString(), msg, line: line ?? null };
   alarmHistory.unshift(entry);
@@ -215,42 +250,85 @@ function renderAlarmList() {
   ).join('');
 }
 
+// ---------- Tool ----------
 function applyToolFromTable(toolNum) {
   const t = toolTable[toolNum];
   if (!t) return;
   machine.tool = toolNum;
   machine.toolLength = t.length;
   machine.toolDiameter = t.dia;
-  if (typeof setToolDiameter === 'function' && toolMesh) {
-    setToolDiameter(toolMesh, t.dia);
-  }
-  lastToolDia = t.dia;
+  setToolGeometry(toolMesh, {
+    diameter: t.dia, flute: t.flute, overall: t.overall
+  });
+  activeTool = toolNum;
   if ($('simTool')) $('simTool').textContent = 'T' + toolNum + ' Ø' + t.dia;
+  document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+    row.classList.toggle('active-row', +row.dataset.tool === +toolNum);
+  });
 }
 
-function checkSoftLimits() {
-  const lim = { x: 200, y: 200, zMin: -80, zMax: 200 };
-  const msgs = [];
-  if (Math.abs(machine.x) > lim.x) msgs.push('SOFT LIMIT X');
-  if (Math.abs(machine.y) > lim.y) msgs.push('SOFT LIMIT Y');
-  if (machine.z < lim.zMin || machine.z > lim.zMax) msgs.push('SOFT LIMIT Z');
-  if (msgs.length) {
-    const msg = msgs.join(' / ');
-    if (!alarmHistory.length || alarmHistory[0].msg !== msg) pushAlarm(msg, lastActiveLine);
-  }
-}
-
+// ---------- Simulator ----------
 const sim = new Simulator({
   stock,
   machine,
   onUpdate: refreshUI,
-  onLine: highlightLine
+  onLine: highlightLine,
+  onAlarm: (msg, line) => {
+    pushAlarm(msg, line);
+    showAlarmPanel();
+  },
+  onTool: (t) => {
+    if (toolTable[t]) applyToolFromTable(t);
+  },
+  onToolComp: (h) => {
+    if (!h) {
+      machine.hNum = 0;
+      machine.hOffset = 0;
+      return;
+    }
+    const t = toolTable[h];
+    if (!t || !t.length) {
+      sim.alarm(
+        'TOOL OFFSET H' + String(h).padStart(2, '0') +
+        ' BELUM DIATUR — isi panjang tool di OFFSET → TOOL (F1)',
+        null
+      );
+      return;
+    }
+    machine.hNum = h;
+    machine.hOffset = t.length;
+    if ($('sbMsg')) $('sbMsg').textContent = 'G43 H' + String(h).padStart(2, '0') + ' aktif (offset ' + t.length + ' mm)';
+  },
+  onCoolant: (on) => {
+    machine.coolant = on;
+    document.querySelectorAll('.sk[data-sk="f6"]').forEach((b) => {
+      b.classList.toggle('active', on);
+    });
+    const lbl = $('sk6');
+    if (lbl) lbl.textContent = on ? 'CLNT ON' : 'COOLANT';
+  },
+  onMessage: (msg) => {
+    if ($('sbMsg')) $('sbMsg').textContent = msg;
+  }
 });
 
-const $ = (id) => document.getElementById(id);
+// ---------- Toolpath helpers ----------
+function computeMachineMoves() {
+  machineMoves = allMoves.map((m) => {
+    const t = moveTarget(m, machine);
+    return { x: t.x, y: t.y, z: t.z, type: m.type, line: m.line };
+  });
+}
 
-function fmt(n) {
-  return (n ?? 0).toFixed(3);
+function rebuildPreview() {
+  disposeGroup(toolpathGroup);
+  toolpathGroup = null;
+  if (!machineMoves.length) return;
+  toolpathGroup = buildToolpathLines(machineMoves, {
+    start: { x: machine.x, y: machine.y, z: machine.z }
+  });
+  toolpathGroup.visible = graphVisible && !sim.playing;
+  scene.add(toolpathGroup);
 }
 
 function disposeGroup(g) {
@@ -268,18 +346,97 @@ function disposeGroup(g) {
 function rebuildTrail() {
   disposeGroup(trailGroup);
   trailGroup = null;
-  if (!allMoves.length || sim.index <= 0) return;
-  const done = allMoves.slice(0, sim.index);
-  const liveEnd = (sim.playing && sim.index < allMoves.length)
-    ? {
-        x: machine.x, y: machine.y, z: machine.z,
-        type: allMoves[sim.index]?.type || 'feed'
-      }
+  if (!machineMoves.length || sim.index <= 0) return;
+  const done = machineMoves.slice(0, sim.index);
+  const cur = allMoves[sim.index];
+  const liveEnd = (sim.playing && cur)
+    ? { x: machine.x, y: machine.y, z: machine.z, type: cur.type || 'feed' }
     : null;
   trailGroup = buildToolpathLines(done, { mode: 'trail', rapidClearance: 15, liveEnd });
   scene.add(trailGroup);
 }
 
+// ---------- WCS markers + vise ----------
+function rebuildWcsMarkers() {
+  disposeGroup(wcsMarkersGroup);
+  wcsMarkersGroup = new THREE.Group();
+  for (const w of WCS_NAMES) {
+    const off = machine.wcs[w];
+    const active = w === machine.activeWcs;
+    if (!active && off.x === 0 && off.y === 0 && off.z === 0 && w !== 'G54') continue;
+    const marker = createWorkZeroMarker(active ? 20 : 9);
+    marker.position.set(off.x, off.z, off.y);
+    if (!active) marker.scale.setScalar(0.6);
+    wcsMarkersGroup.add(marker);
+  }
+  scene.add(wcsMarkersGroup);
+}
+
+function rebuildVise() {
+  disposeGroup(viseGroup);
+  viseGroup = createVise({
+    spanX: stock.sizeX + 10,
+    yMin: stock.originY,
+    yMax: stock.originY + stock.sizeY,
+    topZ: stock.originZ
+  });
+  viseGroup.position.x = stock.originX + stock.sizeX / 2;
+  scene.add(viseGroup);
+}
+
+function frameStock() {
+  const cx = stock.originX + stock.sizeX / 2;
+  const cy = stock.originY + stock.sizeY / 2;
+  const cz = stock.originZ + stock.sizeZ / 2;
+  const span = Math.max(stock.sizeX, stock.sizeY, stock.sizeZ * 2);
+  controls.target.set(cx, cz, cy);
+  camera.position.set(cx + span * 0.9, cz + span * 0.7, cy + span * 1.1);
+  controls.update();
+}
+
+// ---------- Stock setup ----------
+function applyStockSetup(fitToView = true) {
+  const g54 = machine.wcs.G54;
+  let ox, oy, oz;
+  if (stockSetup.placement === 'top-center') {
+    ox = g54.x - stockSetup.sizeX / 2;
+    oy = g54.y - stockSetup.sizeY / 2;
+    oz = g54.z - stockSetup.sizeZ;
+  } else if (stockSetup.placement === 'top-corner') {
+    ox = g54.x;
+    oy = g54.y;
+    oz = g54.z - stockSetup.sizeZ;
+  } else {
+    ox = stockSetup.originX;
+    oy = stockSetup.originY;
+    oz = stockSetup.originZ;
+  }
+  stockSetup.originX = ox;
+  stockSetup.originY = oy;
+  stockSetup.originZ = oz;
+  stock.resize({
+    sizeX: stockSetup.sizeX,
+    sizeY: stockSetup.sizeY,
+    sizeZ: stockSetup.sizeZ,
+    originX: ox, originY: oy, originZ: oz
+  }, scene);
+  stock.reset();
+  stock.updateMesh(scene, true);
+  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
+  rebuildVise();
+  syncStockPlacementInputs();
+  if ($('stockSizeLabel')) {
+    $('stockSizeLabel').textContent = Math.round(stockSetup.sizeX) + '\u00d7' +
+      Math.round(stockSetup.sizeY) + '\u00d7' + Math.round(stockSetup.sizeZ);
+  }
+  if ($('stockInfo')) {
+    $('stockInfo').textContent = 'origin mesin: ' + ox.toFixed(1) + ', ' + oy.toFixed(1) + ', ' + oz.toFixed(1);
+  }
+  if (fitToView) frameStock();
+  refreshUI();
+}
+
+// ---------- UI ----------
 function setGraphVisible(vis) {
   graphVisible = !!vis;
   if (toolpathGroup) toolpathGroup.visible = graphVisible && !sim.playing;
@@ -307,27 +464,33 @@ function applyDryRun(on) {
 
 function updateActiveCodes() {
   const codes = $('activeCodes');
-  if (!codes) return;
-  const chips = [];
-  chips.push('<span class="code-chip">G90</span>');
-  chips.push('<span class="code-chip accent">' + activeWcs + '</span>');
-  chips.push('<span class="code-chip">G17</span>');
-  chips.push('<span class="code-chip">G21</span>');
-  if (machine.feed > 0) {
-    chips.push('<span class="code-chip">F' + Math.round(machine.feed) + '</span>');
+  if (codes) {
+    const chips = [];
+    chips.push('<span class="code-chip">G90</span>');
+    chips.push('<span class="code-chip accent">' + machine.activeWcs + '</span>');
+    chips.push('<span class="code-chip">G17</span>');
+    chips.push('<span class="code-chip">G21</span>');
+    if (machine.hNum > 0) {
+      chips.push('<span class="code-chip">G43 H' + String(machine.hNum).padStart(2, '0') + '</span>');
+    }
+    if (machine.feed > 0) {
+      chips.push('<span class="code-chip">F' + Math.round(machine.feed) + '</span>');
+    }
+    codes.innerHTML = chips.join('');
   }
-  codes.innerHTML = chips.join('');
 
   const ti = $('activeToolInfo');
   if (ti) {
     const sp = machine.spindleOn
-      ? '<span class="code-chip on">M3 S' + (machine.spindle || 0) + '</span>'
+      ? '<span class="code-chip on">M' + machine.spindleDir + ' S' + (machine.spindle || 0) + '</span>'
       : '<span class="code-chip">M5</span>';
+    const clnt = machine.coolant
+      ? '<span class="code-chip on">M8 CLNT</span>' : '';
     ti.innerHTML =
       '<span class="code-chip accent">T' + (machine.tool || 1) + '</span>' +
       '<span class="code-chip">H' + String(machine.tool || 1).padStart(2, '0') + '</span>' +
       '<span class="code-chip">D' + String(machine.tool || 1).padStart(2, '0') + '</span>' +
-      sp;
+      sp + clnt;
   }
 
   if ($('hdrSpindle')) {
@@ -342,40 +505,36 @@ function updateStatusBar() {
   const flags = [];
   if (sim.singleBlock) flags.push('SINGLE BLOCK');
   if (sim.dryRun) flags.push('DRY RUN');
-  if (sim.playing) flags.push('CYCLE ON');
+  if (sim.state === 'alarm') flags.push('ALARM');
+  else if (sim.playing) flags.push('CYCLE ON');
   if ($('sbFlags')) $('sbFlags').textContent = flags.length ? flags.join(' · ') : '—';
   if ($('hdrMode')) $('hdrMode').textContent = currentMode.toUpperCase();
 }
 
 function refreshUI() {
-  if (machine.tool && toolTable[machine.tool] && lastToolDia !== toolTable[machine.tool].dia && machine.tool !== activeTool) {
-    applyToolFromTable(machine.tool);
-    activeTool = machine.tool;
-  } else if (machine.tool && machine.tool !== activeTool && toolTable[machine.tool]) {
-    applyToolFromTable(machine.tool);
-    activeTool = machine.tool;
-  }
-  checkSoftLimits();
-
+  // DRO — semua turunan dari koordinat mesin
   if (droMode === 'machine') {
-    const mc = typeof machineCoords === 'function' ? machineCoords(machine) : {
-      x: machine.x + (machine.g54?.x || 0),
-      y: machine.y + (machine.g54?.y || 0),
-      z: machine.z + (machine.g54?.z || 0) + (machine.toolLength || 0)
-    };
+    const mc = machineCoords(machine);
     if ($('droX')) $('droX').textContent = fmt(mc.x);
     if ($('droY')) $('droY').textContent = fmt(mc.y);
     if ($('droZ')) $('droZ').textContent = fmt(mc.z);
   } else {
-    if ($('droX')) $('droX').textContent = fmt(machine.x);
-    if ($('droY')) $('droY').textContent = fmt(machine.y);
-    if ($('droZ')) $('droZ').textContent = fmt(machine.z);
+    const wc = workCoords(machine);
+    if ($('droX')) $('droX').textContent = fmt(wc.x);
+    if ($('droY')) $('droY').textContent = fmt(wc.y);
+    if ($('droZ')) $('droZ').textContent = fmt(wc.z);
+  }
+  if ($('droDtg')) {
+    const d = machine.dtg || { x: 0, y: 0, z: 0 };
+    $('droDtg').textContent =
+      'X' + fmt(d.x) + '  Y' + fmt(d.y) + '  Z' + fmt(d.z);
   }
 
   if ($('simStatus')) {
-    $('simStatus').textContent = sim.playing
-      ? 'RUN'
-      : (sim.index >= sim.moves.length && sim.moves.length ? 'DONE' : 'IDLE');
+    $('simStatus').textContent =
+      sim.state === 'alarm' ? 'ALARM'
+        : sim.playing ? 'RUN'
+          : (sim.moves.length && sim.index >= sim.moves.length ? 'DONE' : sim.state.toUpperCase());
   }
   if ($('simTool')) {
     $('simTool').textContent = 'T' + (machine.tool || 1) + ' Ø' + (machine.toolDiameter || 6);
@@ -399,10 +558,6 @@ function refreshUI() {
   if ($('hdrTime')) $('hdrTime').textContent = fmtT(elapsed);
 
   setToolPosition(toolMesh, machine.x, machine.y, machine.z);
-  if (machine.toolDiameter && machine.toolDiameter !== lastToolDia) {
-    lastToolDia = machine.toolDiameter;
-    setToolDiameter(toolMesh, lastToolDia);
-  }
   updateActiveCodes();
   updateStatusBar();
 
@@ -410,7 +565,7 @@ function refreshUI() {
 
   if ($('btnPlay')) $('btnPlay').disabled = sim.playing;
   if ($('btnPause')) $('btnPause').disabled = !sim.playing;
-  if ($('btnStop')) $('btnStop').disabled = !sim.playing && sim.index === 0;
+  if ($('btnStop')) $('btnStop').disabled = !sim.playing && sim.index === 0 && sim.state !== 'alarm';
 }
 
 function highlightLine(lineNum) {
@@ -456,79 +611,77 @@ function showEditView() {
   if ($('gcodeLines')) $('gcodeLines').style.display = 'none';
 }
 
+// ---------- Load program ----------
 function loadProgram() {
   const text = ($('gcodeInput') && $('gcodeInput').value) || SAMPLE;
   const parsed = parseGCode(text);
-  const moves = parsed.moves || [];
-  const totalTime = parsed.totalTime || 0;
+  allMoves = parsed.moves || [];
+  sim.loadMoves(allMoves, parsed.totalTime || 0);
+  computeMachineMoves();
+
   if (parsed.alarms && parsed.alarms.length) {
-    parsed.alarms.forEach((a) => pushAlarm(a.msg, a.line));
-  } else if ($('sbAlarm') && !alarmHistory.length) {
+    parsed.alarms.forEach((a) => pushAlarm(a.msg + ' (baris ' + a.line + ')', a.line));
+  } else if (!alarmHistory.length && $('sbAlarm')) {
     $('sbAlarm').textContent = 'NO ALARMS';
     $('sbAlarm').className = 'sb-item ok';
   }
-  allMoves = moves;
-  sim.loadMoves(moves, totalTime);
-  if ($('lineCount')) $('lineCount').textContent = moves.length + ' gerakan';
 
-  const firstTool = moves.find((m) => m.tool)?.tool;
-  if (firstTool && toolTable[firstTool]) {
-    applyToolFromTable(firstTool);
-    activeTool = firstTool;
-    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
-      row.classList.toggle('active-row', +row.dataset.tool === +firstTool);
-    });
+  const firstTool = allMoves.find((m) => m.type === 'tool')?.tool;
+  if (firstTool && toolTable[firstTool]) applyToolFromTable(firstTool);
+
+  if ($('lineCount')) {
+    const nMove = allMoves.filter((m) => m.type === 'rapid' || m.type === 'feed').length;
+    $('lineCount').textContent = nMove + ' gerakan';
   }
 
-  disposeGroup(toolpathGroup);
-  toolpathGroup = null;
   disposeGroup(trailGroup);
   trailGroup = null;
 
-  toolpathGroup = buildToolpathLines(moves);
-  toolpathGroup.visible = graphVisible;
-  scene.add(toolpathGroup);
-
   const autoFit = $('chkAutoFit') && $('chkAutoFit').checked;
-  if (autoFit && moves.length) {
+  if (autoFit && machineMoves.length) {
     const toolR = (machine.toolDiameter || 12) / 2;
-    const b = boundsFromMoves(moves, { toolRadius: toolR });
+    const b = boundsFromPoints(machineMoves, {
+      toolRadius: toolR,
+      topZ: machine.wcs.G54.z
+    });
     if (b) {
-      stock.resize(b, scene);
-      if (bed) {
-        bed.position.set(b.centerX, b.originZ - 5, b.centerY);
-        bed.scale.set(Math.max(1, b.sizeX / 240), 1, Math.max(1, b.sizeY / 200));
-      }
-      if (grid) grid.position.set(b.centerX, b.originZ + 0.1, b.centerY);
-      controls.target.set(b.centerX, b.centerZ, b.centerY);
-      const span = Math.max(b.sizeX, b.sizeY, b.sizeZ * 2);
-      camera.position.set(
-        b.centerX + span * 0.9,
-        b.centerZ + span * 0.7,
-        b.centerY + span * 1.1
-      );
-      controls.update();
-      if ($('stockSizeLabel')) $('stockSizeLabel').textContent = formatStockSize(b);
+      stockSetup.sizeX = b.sizeX;
+      stockSetup.sizeY = b.sizeY;
+      stockSetup.sizeZ = b.sizeZ;
+      stockSetup.placement = 'custom';
+      stockSetup.originX = b.originX;
+      stockSetup.originY = b.originY;
+      stockSetup.originZ = b.originZ;
+      if ($('stockX')) $('stockX').value = Math.round(b.sizeX);
+      if ($('stockY')) $('stockY').value = Math.round(b.sizeY);
+      if ($('stockZ')) $('stockZ').value = Math.round(b.sizeZ);
+      applyStockSetup(true);
       if ($('sbMsg')) $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b);
     }
+  } else {
+    rebuildPreview();
   }
 
-  stock.reset();
-  stock.updateMesh(scene, true);
-  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
-  showLinesView(text);
+  rebuildWcsMarkers();
   refreshUI();
 }
 
+// ---------- Jog ----------
 function jogAxis(axis, dir) {
   if (currentMode !== 'setup') return;
-  machine[axis] += dir * jogInc;
-  if (axis === 'x') machine.x = Math.max(-200, Math.min(200, machine.x));
-  if (axis === 'y') machine.y = Math.max(-200, Math.min(200, machine.y));
-  if (axis === 'z') machine.z = Math.max(-80, Math.min(200, machine.z));
+  const t = MACHINE_PROFILE.travel;
+  let v = machine[axis] + dir * jogInc;
+  const lo = t[axis][0], hi = t[axis][1];
+  if (v < lo || v > hi) {
+    pushAlarm('SOFT LIMIT ' + axis.toUpperCase() + ' — JOG DIBATASI TRAVEL MESIN', null);
+    v = Math.max(lo, Math.min(hi, v));
+  }
+  machine[axis] = v;
+  machine.dtg = { x: 0, y: 0, z: 0 };
   refreshUI();
 }
 
+// ---------- Event wiring ----------
 if ($('btnLoad')) $('btnLoad').addEventListener('click', loadProgram);
 if ($('btnFitStock')) {
   $('btnFitStock').addEventListener('click', () => {
@@ -576,9 +729,6 @@ if ($('btnStop')) $('btnStop').addEventListener('click', () => {
 if ($('btnStep')) $('btnStep').addEventListener('click', () => { sim.step(); refreshUI(); });
 if ($('btnReset')) $('btnReset').addEventListener('click', () => {
   sim.stop();
-  stock.reset();
-  stock.updateMesh(scene, true);
-  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
   disposeGroup(trailGroup);
   trailGroup = null;
   if (toolpathGroup) toolpathGroup.visible = graphVisible;
@@ -593,6 +743,8 @@ if (chkSB) chkSB.addEventListener('change', (e) => {
 });
 const chkDR = $('chkDryRun');
 if (chkDR) chkDR.addEventListener('change', (e) => applyDryRun(e.target.checked));
+const chkOS = $('chkOptStop');
+if (chkOS) chkOS.addEventListener('change', (e) => { machine.optStop = e.target.checked; });
 
 document.querySelectorAll('.ovr-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -616,21 +768,21 @@ sim.feedOvr = 1;
 sim.rapidOvr = 0.5;
 sim.simSpeed = 1;
 
-if ($('btnResetView')) $('btnResetView').addEventListener('click', () => {
-  camera.position.set(160, 110, 200);
-  controls.target.set(50, 0, 40);
-  controls.update();
-});
+if ($('btnResetView')) $('btnResetView').addEventListener('click', frameStock);
 if ($('btnTopView')) $('btnTopView').addEventListener('click', () => {
-  camera.position.set(50, 180, 40);
-  controls.target.set(50, 0, 40);
+  camera.position.set(
+    stock.originX + stock.sizeX / 2,
+    stock.originZ + Math.max(stock.sizeX, stock.sizeY) * 1.6,
+    stock.originY + stock.sizeY / 2
+  );
+  controls.target.set(
+    stock.originX + stock.sizeX / 2,
+    stock.originZ + stock.sizeZ / 2,
+    stock.originY + stock.sizeY / 2
+  );
   controls.update();
 });
-if ($('btnIsoView')) $('btnIsoView').addEventListener('click', () => {
-  camera.position.set(160, 110, 200);
-  controls.target.set(50, 0, 40);
-  controls.update();
-});
+if ($('btnIsoView')) $('btnIsoView').addEventListener('click', frameStock);
 
 document.querySelectorAll('.mode-tab').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -656,9 +808,11 @@ document.querySelectorAll('.subtab').forEach((btn) => {
     document.querySelectorAll('.subtab').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     const sub = btn.dataset.sub;
-    if ($('setupWork')) $('setupWork').style.display = sub === 'work' ? 'flex' : 'none';
-    if ($('setupTool')) $('setupTool').style.display = sub === 'tool' ? 'flex' : 'none';
-    if ($('setupJog')) $('setupJog').style.display = sub === 'jog' ? 'flex' : 'none';
+    const panes = ['work', 'tool', 'jog', 'stock'];
+    panes.forEach((p) => {
+      const el = $('setup' + p.charAt(0).toUpperCase() + p.slice(1));
+      if (el) el.style.display = sub === p ? 'flex' : 'none';
+    });
   });
 });
 
@@ -671,17 +825,25 @@ document.querySelectorAll('.dro-tab').forEach((btn) => {
   });
 });
 
+// WCS table: klik baris = aktifkan; ZERO = touch-off (offset = posisi mesin kini);
+// edit input offset = ubah offset → preview/trail/marker dihitung ulang.
 document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
   row.addEventListener('click', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
     document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
     row.classList.add('active-row');
-    activeWcs = row.dataset.wcs;
+    machine.activeWcs = row.dataset.wcs;
     updateActiveCodes();
+    rebuildWcsMarkers();
+    refreshUI();
   });
   row.querySelectorAll('input').forEach((inp) => {
     inp.addEventListener('change', () => {
-      wcsTable[row.dataset.wcs][inp.dataset.axis] = parseFloat(inp.value) || 0;
+      machine.wcs[row.dataset.wcs][inp.dataset.axis] = parseFloat(inp.value) || 0;
+      savePersistedOffsets();
+      computeMachineMoves();
+      rebuildPreview();
+      rebuildWcsMarkers();
     });
   });
   const zeroBtn = row.querySelector('.btn-set-zero');
@@ -689,50 +851,55 @@ document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
     zeroBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const wcs = row.dataset.wcs;
-      wcsTable[wcs] = { x: machine.x, y: machine.y, z: machine.z };
+      machine.wcs[wcs] = { x: machine.x, y: machine.y, z: machine.z };
       row.querySelectorAll('input').forEach((inp) => {
-        inp.value = wcsTable[wcs][inp.dataset.axis].toFixed(3);
+        inp.value = machine.wcs[wcs][inp.dataset.axis].toFixed(3);
       });
       document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
       row.classList.add('active-row');
-      activeWcs = wcs;
+      machine.activeWcs = wcs;
+      savePersistedOffsets();
+      computeMachineMoves();
+      rebuildPreview();
+      rebuildWcsMarkers();
       updateActiveCodes();
+      refreshUI();
       markTrain('partzero');
+      if ($('sbMsg')) $('sbMsg').textContent = wcs + ' ZERO di posisi mesin kini — offset disimpan';
     });
   }
 });
 
 if ($('btnApplyWcs')) {
   $('btnApplyWcs').addEventListener('click', () => {
-    // read inputs into table first
     document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
       const wcs = row.dataset.wcs;
-      if (!wcsTable[wcs]) return;
       row.querySelectorAll('input').forEach((inp) => {
         const ax = inp.dataset.axis;
-        if (ax) wcsTable[wcs][ax] = parseFloat(inp.value) || 0;
+        if (ax) machine.wcs[wcs][ax] = parseFloat(inp.value) || 0;
       });
     });
-    const o = wcsTable[activeWcs] || { x: 0, y: 0, z: 0 };
-    machine.g54 = { x: o.x, y: o.y, z: o.z };
-    machine.activeWcs = activeWcs;
     savePersistedOffsets();
+    computeMachineMoves();
+    rebuildPreview();
+    rebuildWcsMarkers();
     markTrain('partzero');
-    if ($('sbMsg')) $('sbMsg').textContent = activeWcs + ' applied & saved — MACHINE = WORK + offset';
+    if ($('sbMsg')) $('sbMsg').textContent = machine.activeWcs + ' applied — toolpath bergeser mengikuti offset';
     refreshUI();
   });
 }
 
+// Tool table
 document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
   row.addEventListener('click', (e) => {
     if (e.target.tagName === 'INPUT') return;
-    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
-    row.classList.add('active-row');
-    activeTool = +row.dataset.tool;
+    applyToolFromTable(+row.dataset.tool);
   });
   row.querySelectorAll('input').forEach((inp) => {
     inp.addEventListener('change', () => {
-      toolTable[+row.dataset.tool][inp.dataset.field] = parseFloat(inp.value) || 0;
+      const t = toolTable[+row.dataset.tool];
+      const f = inp.dataset.field;
+      if (t && f) t[f] = parseFloat(inp.value) || 0;
     });
   });
 });
@@ -740,11 +907,12 @@ document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
 if ($('btnApplyTool')) {
   $('btnApplyTool').addEventListener('click', () => {
     document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
-      const tn = row.dataset.tool;
-      if (!toolTable[tn]) return;
+      const tn = +row.dataset.tool;
+      const t = toolTable[tn];
+      if (!t) return;
       row.querySelectorAll('input').forEach((inp) => {
-        if (inp.dataset.field === 'length') toolTable[tn].length = parseFloat(inp.value) || 0;
-        if (inp.dataset.field === 'dia') toolTable[tn].dia = parseFloat(inp.value) || toolTable[tn].dia;
+        const f = inp.dataset.field;
+        if (f) t[f] = parseFloat(inp.value) || t[f];
       });
     });
     applyToolFromTable(activeTool);
@@ -755,6 +923,31 @@ if ($('btnApplyTool')) {
   });
 }
 
+// Stock controls
+if ($('stockPlacement')) {
+  $('stockPlacement').addEventListener('change', (e) => {
+    stockSetup.placement = e.target.value;
+    applyStockSetup(true);
+  });
+}
+if ($('btnApplyStock')) {
+  $('btnApplyStock').addEventListener('click', () => {
+    stockSetup.sizeX = Math.max(10, parseFloat($('stockX').value) || 100);
+    stockSetup.sizeY = Math.max(10, parseFloat($('stockY').value) || 80);
+    stockSetup.sizeZ = Math.max(5, parseFloat($('stockZ').value) || 20);
+    if (stockSetup.placement === 'custom') {
+      stockSetup.originX = parseFloat($('stockOx').value) || 0;
+      stockSetup.originY = parseFloat($('stockOy').value) || 0;
+      stockSetup.originZ = parseFloat($('stockOz').value) || 0;
+    }
+    if ($('chkAutoFit')) $('chkAutoFit').checked = false;
+    applyStockSetup(true);
+    if ($('sbMsg')) $('sbMsg').textContent = 'Stock diterapkan: ' +
+      Math.round(stockSetup.sizeX) + '\u00d7' + Math.round(stockSetup.sizeY) + '\u00d7' + Math.round(stockSetup.sizeZ);
+  });
+}
+
+// Jog
 document.querySelectorAll('.jog-inc').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.jog-inc').forEach((b) => b.classList.remove('active'));
@@ -769,25 +962,27 @@ document.querySelectorAll('.jog-btn').forEach((btn) => {
 });
 if ($('btnJogHome')) {
   $('btnJogHome').addEventListener('click', () => {
-    machine.x = 0; machine.y = 0; machine.z = 50;
+    machine.x = MACHINE_PROFILE.home.x;
+    machine.y = MACHINE_PROFILE.home.y;
+    machine.z = MACHINE_PROFILE.home.z;
+    machine.dtg = { x: 0, y: 0, z: 0 };
     refreshUI();
+    if ($('sbMsg')) $('sbMsg').textContent = 'ZERO RETURN — tool di home mesin';
   });
 }
 
+// Softkeys
 document.querySelectorAll('.sk').forEach((btn) => {
   btn.addEventListener('click', () => {
     const sk = btn.dataset.sk;
     if (sk === 'f1') {
       document.querySelector('.mode-tab[data-mode="setup"]')?.click();
-      document.querySelectorAll('.subtab').forEach((b) => {
-        b.classList.toggle('active', b.dataset.sub === 'work');
-      });
-      if ($('setupWork')) $('setupWork').style.display = 'flex';
-      if ($('setupTool')) $('setupTool').style.display = 'none';
-      if ($('setupJog')) $('setupJog').style.display = 'none';
-      if ($('sbMsg')) $('sbMsg').textContent = 'OFFSET — Work Coordinate System';
+      document.querySelector('.subtab[data-sub="work"]')?.click();
+      if ($('sbMsg')) $('sbMsg').textContent = 'OFFSET — Work Coordinate System (ZERO = touch-off)';
     } else if (sk === 'f2') {
-      if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — Active Codes';
+      if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — ' + machine.activeWcs +
+        ' T' + machine.tool + (machine.hNum ? ' G43 H' + String(machine.hNum).padStart(2, '0') : '') +
+        ' F' + Math.round(machine.feed) + ' S' + (machine.spindleOn ? machine.spindle : 'OFF');
     } else if (sk === 'f3') {
       showAlarmPanel();
       if ($('sbMsg')) $('sbMsg').textContent = alarmHistory.length
@@ -798,10 +993,9 @@ document.querySelectorAll('.sk').forEach((btn) => {
     } else if (sk === 'f5') {
       openTraining();
     } else if (sk === 'f6') {
-      btn.classList.toggle('active');
-      const on = btn.classList.contains('active');
-      const lbl = $('sk6');
-      if (lbl) lbl.textContent = on ? 'CLNT ON' : 'COOLANT';
+      const on = !machine.coolant;
+      machine.coolant = on;
+      sim.onCoolant(on);
       if ($('sbMsg')) $('sbMsg').textContent = on ? 'COOLANT ON' : 'COOLANT OFF';
     } else if (sk === 'f7') {
       const c = $('chkSingleBlock');
@@ -872,6 +1066,7 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// ---------- Loop ----------
 let last = performance.now();
 let trailAcc = 0;
 function animate(now) {
@@ -889,10 +1084,12 @@ function animate(now) {
   requestAnimationFrame(animate);
 }
 
+// ---------- Boot ----------
 document.querySelectorAll('.sk[data-sk="f4"]').forEach((b) => b.classList.add('active'));
 if ($('sk4')) $('sk4').textContent = 'GRAPH ON';
 loadPersistedOffsets();
 syncOffsetInputsFromTables();
+applyStockSetup(true);
 if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
 loadProgram();
 requestAnimationFrame(animate);

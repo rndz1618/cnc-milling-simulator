@@ -90,6 +90,12 @@ export class VoxelStock {
     return ix >= 0 && ix < this.nx && iy >= 0 && iy < this.ny && iz >= 0 && iz < this.nz;
   }
 
+  /** true jika titik (koordinat mesin) berada di dalam material yang belum terpotong. */
+  pointInStock(x, y, z) {
+    const { ix, iy, iz } = this.worldToVoxel(x, y, z);
+    return this.inBounds(ix, iy, iz) && this.grid[this.idx(ix, iy, iz)] === 1;
+  }
+
   cutCylinder(cx, cy, zTip, radius) {
     const r2 = radius * radius;
     const { ix: cx0, iy: cy0 } = this.worldToVoxel(cx, cy, zTip);

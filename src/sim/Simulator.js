@@ -1,14 +1,35 @@
 /**
- * Playback engine: advances moves, cuts stock, syncs line highlight.
- * Program coordinates = WORK coordinates (tool stays on toolpath).
- * G54 is for DRO Machine mode only: machine = work + g54.
+ * Playback engine — mengeksekusi stream entri parser DALAM KOORDINAT MESIN.
+ * Work offset (G54–G59) diterapkan lewat moveTarget() saat eksekusi, sehingga
+ * mengubah offset SETELAH load tetap memindahkan jalur (seperti mesin asli).
+ *
+ * Status: idle | run | hold | alarm | done
+ * Alarm (kode tak dikenal, soft limit, G00 nabrak material, H offset belum
+ * di-set) MENGHENKAN eksekusi — lanjut hanya setelah RESET.
  */
+import { moveTarget, outOfTravel, MACHINE_PROFILE } from '../machine/MachineState.js';
+
 export class Simulator {
-  constructor({ stock, machine, onUpdate, onLine }) {
+  constructor({
+    stock,
+    machine,
+    onUpdate,
+    onLine,
+    onAlarm,
+    onTool,
+    onToolComp,
+    onCoolant,
+    onMessage
+  }) {
     this.stock = stock;
     this.machine = machine;
     this.onUpdate = onUpdate || (() => {});
     this.onLine = onLine || (() => {});
+    this.onAlarm = onAlarm || (() => {});
+    this.onTool = onTool || (() => {});
+    this.onToolComp = onToolComp || (() => {});
+    this.onCoolant = onCoolant || (() => {});
+    this.onMessage = onMessage || (() => {});
 
     this.moves = [];
     this.totalTime = 0;
@@ -16,6 +37,7 @@ export class Simulator {
     this.progress = 0;
     this.elapsed = 0;
     this.playing = false;
+    this.state = 'idle';
     this.singleBlock = false;
     this.dryRun = false;
     this.simSpeed = 1;
@@ -34,123 +56,283 @@ export class Simulator {
     this.progress = 0;
     this.elapsed = 0;
     this.playing = false;
-    this.machine.x = 0;
-    this.machine.y = 0;
-    this.machine.z = 50;
+    this.state = 'idle';
+    this._homeMachine();
     this.onLine(null);
     this.onUpdate();
   }
 
+  stop() {
+    // RESET: hentikan, kembali ke awal, bersihkan alarm.
+    this.playing = false;
+    this.state = 'idle';
+    this.index = 0;
+    this.progress = 0;
+    this.elapsed = 0;
+    this._homeMachine();
+    this.stock.reset();
+    this.stock._dirty = true;
+    this.onLine(null);
+    this.onUpdate();
+  }
+
+  _homeMachine() {
+    this.machine.x = MACHINE_PROFILE.home.x;
+    this.machine.y = MACHINE_PROFILE.home.y;
+    this.machine.z = MACHINE_PROFILE.home.z;
+    this.machine.dtg = { x: 0, y: 0, z: 0 };
+  }
+
   play() {
+    if (this.state === 'alarm') {
+      this.onMessage('ALARM AKTIF — tekan RESET (⏹) dulu');
+      this.onUpdate();
+      return;
+    }
     if (!this.moves.length) return;
     if (this.index >= this.moves.length) {
+      this.stock.reset();
+      this.stock._dirty = true;
       this.index = 0;
       this.progress = 0;
       this.elapsed = 0;
-      this.stock.reset();
-      this.stock._dirty = true;
     }
-    this.playing = true;
+    // _advanceEntries bisa langsung mengakhiri program (M30) / berhenti (M00)
+    // atau memicu alarm — hormati status yang ia set, jangan paksa 'run'.
+    const ready = this._advanceEntries();
+    this.playing = ready;
+    if (ready) this.state = 'run';
     this.onUpdate();
   }
 
   pause() {
     this.playing = false;
+    if (this.state === 'run') this.state = 'hold';
     this.onUpdate();
   }
 
-  stop() {
+  alarm(msg, line) {
     this.playing = false;
-    this.reset();
-    this.stock.reset();
-    this.stock._dirty = true;
+    this.state = 'alarm';
+    this.machine.dtg = { x: 0, y: 0, z: 0 };
+    this.onAlarm(msg, line);
     this.onUpdate();
+  }
+
+  /**
+   * Konsumsi entri non-gerak sampai ketemu gerakan / berhenti.
+   * Return true jika ada gerakan siap dieksekusi pada index sekarang.
+   */
+  _advanceEntries() {
+    while (this.index < this.moves.length) {
+      const e = this.moves[this.index];
+      if (e.type === 'tool') {
+        this.onTool(e.tool);
+        if (this.state === 'alarm') return false;
+        this.index++;
+        continue;
+      }
+      if (e.type === 'coolant') {
+        this.machine.coolant = e.on;
+        this.onCoolant(e.on);
+        this.index++;
+        continue;
+      }
+      if (e.type === 'toolcomp') {
+        this.onToolComp(e.h);
+        if (this.state === 'alarm') return false;
+        this.index++;
+        continue;
+      }
+      if (e.type === 'alarm') {
+        this.alarm(e.msg, e.line);
+        return false;
+      }
+      if (e.type === 'stop') {
+        this.index++;
+        if (e.end) {
+          this.playing = false;
+          this.state = 'done';
+          this.onLine(null);
+          this.onMessage('PROGRAM END (M30)');
+          this.onUpdate();
+          return false;
+        }
+        if (e.optional && !this.machine.optStop) continue;
+        this.playing = false;
+        this.state = 'hold';
+        this.onMessage(
+          e.optional
+            ? 'OPTIONAL STOP (M01) — Cycle Start untuk lanjut'
+            : 'PROGRAM STOP (M00) — Cycle Start untuk lanjut'
+        );
+        this.onUpdate();
+        return false;
+      }
+      return true; // rapid | feed | home
+    }
+    this.playing = false;
+    this.state = this.moves.length ? 'done' : 'idle';
+    this.onUpdate();
+    return false;
   }
 
   step() {
-    if (!this.moves.length || this.index >= this.moves.length) return;
-    const prev = this.index === 0 ? { x: 0, y: 0, z: 50 } : this.moves[this.index - 1];
+    if (this.state === 'alarm') return;
+    if (!this._advanceEntries()) return;
+    if (this.index >= this.moves.length) return;
     const m = this.moves[this.index];
-    this._applyMove(m);
-    if (!this.dryRun && m.type === 'feed') {
-      this.stock.cutSegment(
-        prev.x, prev.y, prev.z,
-        m.x, m.y, m.z,
-        this.machine.toolDiameter / 2
-      );
+    const target = moveTarget(m, this.machine);
+    const bad = outOfTravel(target);
+    if (bad.length) {
+      this.alarm('SOFT LIMIT ' + bad.join('/') + ' — TARGET DI LUAR TRAVEL MESIN', m.line);
+      return;
+    }
+    const prev = { x: this.machine.x, y: this.machine.y, z: this.machine.z };
+    this._setPos(target);
+    this.machine.dtg = { x: 0, y: 0, z: 0 };
+    this._applyMeta(m);
+    if (!this.dryRun) {
+      if (m.type === 'feed') {
+        this.stock.cutSegment(prev.x, prev.y, prev.z, target.x, target.y, target.z,
+          (this.machine.toolDiameter || 12) / 2);
+      } else if (m.type === 'rapid') {
+        this._checkRapidCrash(prev, target, m);
+      }
     }
     this.onLine(m.line);
     this.index++;
-    this.progress = 0;
-    this.onUpdate();
-    if (this.index >= this.moves.length) this.playing = false;
-  }
-
-  _applyMove(m) {
-    // Program coords = WORK coords (stock & toolpath live in work space)
-    this.machine.x = m.x;
-    this.machine.y = m.y;
-    this.machine.z = m.z;
-    this.machine.feed = m.f || 0;
-    if (m.spindle) {
-      this.machine.spindle = m.spindle;
-      this.machine.spindleOn = true;
+    this._advanceEntries();
+    if (this.index >= this.moves.length) {
+      this.playing = false;
+      this.state = 'done';
     }
-    if (m.tool) this.machine.tool = m.tool;
-    if (m.wcs) this.machine.activeWcs = m.wcs;
+    this.onUpdate();
   }
 
   tick(dt) {
-    if (!this.playing || this.singleBlock) return;
+    if (!this.playing) return;
     if (this.index >= this.moves.length) {
       this.playing = false;
+      this.state = 'done';
       this.onUpdate();
       return;
     }
 
-    const move = this.moves[this.index];
-    const prev = this.index === 0 ? { x: 0, y: 0, z: 50 } : this.moves[this.index - 1];
-    const dx = move.x - prev.x;
-    const dy = move.y - prev.y;
-    const dz = move.z - prev.z;
+    const m = this.moves[this.index];
+    const target = moveTarget(m, this.machine);
+    const bad = outOfTravel(target);
+    if (bad.length) {
+      this.alarm('SOFT LIMIT ' + bad.join('/') + ' — TARGET DI LUAR TRAVEL MESIN', m.line);
+      return;
+    }
+
+    const prev = { x: this.machine.x, y: this.machine.y, z: this.machine.z };
+    const dx = target.x - prev.x;
+    const dy = target.y - prev.y;
+    const dz = target.z - prev.z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.001;
 
-    const feed = move.type === 'rapid'
-      ? 5000 * this.rapidOvr
-      : (move.f || 500) * this.feedOvr;
+    const feed = m.type === 'rapid'
+      ? MACHINE_PROFILE.rapidRate * this.rapidOvr
+      : (m.f || 500) * this.feedOvr;
     const moveTime = (dist / feed) * 60;
-    const dProg = (dt * this.simSpeed) / (moveTime || 0.01);
-
-    const prevProg = this.progress;
-    this.progress += dProg;
+    this.progress += (dt * this.simSpeed) / (moveTime || 0.01);
     this.elapsed += dt * this.simSpeed;
-    this.onLine(move.line);
+    this.onLine(m.line);
+    this._applyMeta(m);
 
-    const t0 = prevProg;
     const t1 = Math.min(1, this.progress);
-    const x0 = prev.x + dx * t0;
-    const y0 = prev.y + dy * t0;
-    const z0 = prev.z + dz * t0;
-    const x1 = prev.x + dx * t1;
-    const y1 = prev.y + dy * t1;
-    const z1 = prev.z + dz * t1;
-
-    this.machine.x = x1;
-    this.machine.y = y1;
-    this.machine.z = z1;
+    const now = {
+      x: prev.x + dx * t1,
+      y: prev.y + dy * t1,
+      z: prev.z + dz * t1
+    };
+    this._setPos(now);
     this.machine.feed = feed;
-    if (move.wcs) this.machine.activeWcs = move.wcs;
+    this.machine.dtg = {
+      x: target.x - now.x,
+      y: target.y - now.y,
+      z: target.z - now.z
+    };
 
-    if (!this.dryRun && move.type === 'feed') {
-      this.stock.cutSegment(x0, y0, z0, x1, y1, z1, this.machine.toolDiameter / 2);
+    if (!this.dryRun && m.type === 'feed') {
+      this.stock.cutSegment(prev.x, prev.y, prev.z, now.x, now.y, now.z,
+        (this.machine.toolDiameter || 12) / 2);
     }
 
     if (this.progress >= 1) {
-      this._applyMove(move);
+      this._setPos(target);
+      this.machine.dtg = { x: 0, y: 0, z: 0 };
+      if (!this.dryRun && m.type === 'rapid') this._checkRapidCrash(prev, target, m);
+      if (this.state === 'alarm') return;
       this.index++;
       this.progress = 0;
-      if (this.index >= this.moves.length) this.playing = false;
+      if (this.singleBlock) {
+        this.playing = false;
+        this.state = 'hold';
+        this.onMessage('SINGLE BLOCK — Cycle Start untuk blok berikutnya');
+      } else {
+        this._advanceEntries();
+      }
+      if (this.index >= this.moves.length && this.playing) {
+        this.playing = false;
+        this.state = 'done';
+      }
     }
     this.onUpdate();
+  }
+
+  _setPos(t) {
+    this.machine.x = t.x;
+    this.machine.y = t.y;
+    this.machine.z = t.z;
+  }
+
+  _applyMeta(m) {
+    if (m.wcs) this.machine.activeWcs = m.wcs;
+    if (m.tool) this.machine.tool = m.tool;
+    if (m.spindle != null) {
+      this.machine.spindle = m.spindle;
+      this.machine.spindleOn = m.spindle > 0;
+      if (m.spindleDir) this.machine.spindleDir = m.spindleDir;
+    }
+    this.machine.feed = m.type === 'rapid'
+      ? MACHINE_PROFILE.rapidRate * this.rapidOvr
+      : (m.f || this.machine.feed || 0);
+  }
+
+  /**
+   * G00 yang menembus material = crash. Cek bukan hanya garis tengah tool —
+   * juga lingkar radius (badan tool bisa menabrak dinding slot yang baru
+   * dipotong). Sisa segmen sampai titik tabrak dipotong (kerusakan terlihat),
+   * lalu alarm + halt.
+   */
+  _checkRapidCrash(p0, p1, m) {
+    const dist = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2 + (p1.z - p0.z) ** 2);
+    if (dist < 1e-6) return false;
+    const r = (this.machine.toolDiameter || 12) / 2;
+    const ringR = r * 0.85;
+    const ring = [[0, 0]];
+    for (let k = 0; k < 6; k++) {
+      const a = (Math.PI * 2 * k) / 6;
+      ring.push([Math.cos(a) * ringR, Math.sin(a) * ringR]);
+    }
+    const step = Math.max((this.stock.res || 1) * 0.5, 0.5);
+    const n = Math.max(1, Math.ceil(dist / step));
+    for (let s = 1; s <= n; s++) {
+      const t = s / n;
+      const px = p0.x + (p1.x - p0.x) * t;
+      const py = p0.y + (p1.y - p0.y) * t;
+      const pz = p0.z + (p1.z - p0.z) * t;
+      for (const [ox, oy] of ring) {
+        if (this.stock.pointInStock(px + ox, py + oy, pz)) {
+          this.stock.cutSegment(p0.x, p0.y, p0.z, px, py, pz, r);
+          this.alarm('RAPID CRASH — G00 MENABRAK MATERIAL (baris ' + m.line + ')', m.line);
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }

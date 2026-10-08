@@ -27,7 +27,7 @@ export function createScene(container) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.target.set(50, 0, 40);
+  controls.target.set(0, 0, -30);
   controls.maxPolarAngle = Math.PI * 0.92;
 
   scene.add(new THREE.AmbientLight(0xc8d4e8, 0.85));
@@ -45,8 +45,9 @@ export function createScene(container) {
   top.position.set(50, 250, 40);
   scene.add(top);
 
+  // Meja mesin di ruang koordinat mesin (origin mesin = sudut kerja).
   const bed = new THREE.Mesh(
-    new THREE.BoxGeometry(240, 10, 200),
+    new THREE.BoxGeometry(520, 10, 520),
     new THREE.MeshStandardMaterial({
       color: 0x3a4555,
       metalness: 0.35,
@@ -55,13 +56,18 @@ export function createScene(container) {
       emissiveIntensity: 0.15
     })
   );
-  bed.position.set(50, -25, 40);
+  bed.position.set(0, -70, 0);
   bed.receiveShadow = true;
   scene.add(bed);
 
-  const grid = new THREE.GridHelper(220, 22, 0x6a7a90, 0x3a4a5c);
-  grid.position.set(50, -19.9, 40);
+  const grid = new THREE.GridHelper(500, 50, 0x6a7a90, 0x3a4a5c);
+  grid.position.set(0, -64.9, 0);
   scene.add(grid);
+
+  // Marker origin mesin (kecil, abu) — beda dengan work zero G54 (hijau).
+  const machineOrigin = new THREE.AxesHelper(12);
+  machineOrigin.position.set(0, -64.5, 0);
+  scene.add(machineOrigin);
 
   function onResize() {
     const w = container.clientWidth;
@@ -73,25 +79,33 @@ export function createScene(container) {
   window.addEventListener('resize', onResize);
   setTimeout(onResize, 50);
 
-  return { scene, camera, renderer, controls, bed, grid, onResize };
+  return { scene, camera, renderer, controls, bed, grid, machineOrigin, onResize };
 }
 
-export function createToolMesh(radius = 6) {
-  const g = new THREE.Group();
-  const r = Math.max(1.0, Math.min(radius, 20));
-  const D = r * 2;
+/**
+ * Geometri tool berbasis DATA (tool table), bukan proporsi prosedural.
+ * spec: { diameter, flute, overall } (mm). Tip di y=0, mengarah ke bawah
+ * saat diposisikan oleh setToolPosition.
+ */
+export const DEFAULT_TOOL_SPEC = { diameter: 12, flute: 36, overall: 100 };
 
-  const fluteLen = Math.min(30, Math.max(10, D * 2.5));
+export function createToolMesh(spec = DEFAULT_TOOL_SPEC) {
+  const g = new THREE.Group();
+  const d = Math.max(1, spec.diameter || DEFAULT_TOOL_SPEC.diameter);
+  const r = d / 2;
+  const overall = Math.max(d + 30, spec.overall || DEFAULT_TOOL_SPEC.overall);
+  const fluteLen = Math.max(4, Math.min(spec.flute || d * 3, overall - 26));
+
+  // Flute (heliks digambarkan ring gelap)
   const flute = new THREE.Mesh(
-    new THREE.CylinderGeometry(r * 0.98, r, fluteLen, 24),
+    new THREE.CylinderGeometry(r * 0.985, r, fluteLen, 24),
     new THREE.MeshStandardMaterial({ color: 0x1c1c1e, metalness: 0.92, roughness: 0.22 })
   );
   flute.position.y = fluteLen / 2;
   g.add(flute);
-
   for (let i = 1; i <= 3; i++) {
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(r * 1.01, 0.15, 6, 24),
+      new THREE.TorusGeometry(r * 1.01, Math.max(0.12, d * 0.012), 6, 24),
       new THREE.MeshStandardMaterial({ color: 0x0a0a0a, metalness: 0.5, roughness: 0.6 })
     );
     ring.rotation.x = Math.PI / 2;
@@ -99,8 +113,11 @@ export function createToolMesh(radius = 6) {
     g.add(ring);
   }
 
-  const shankR = r * 1.02;
-  const shankLen = Math.min(40, Math.max(18, D * 2.2));
+  // Shank sampai dekat holder
+  const colletLen = Math.max(10, d * 0.9);
+  const stubLen = 14;
+  const shankLen = Math.max(6, overall - fluteLen - colletLen - stubLen);
+  const shankR = Math.max(r * 1.02, 6);
   const shank = new THREE.Mesh(
     new THREE.CylinderGeometry(shankR, shankR, shankLen, 20),
     new THREE.MeshStandardMaterial({ color: 0xd0d4d8, metalness: 0.88, roughness: 0.2 })
@@ -108,8 +125,8 @@ export function createToolMesh(radius = 6) {
   shank.position.y = fluteLen + shankLen / 2;
   g.add(shank);
 
-  const colletR = Math.max(r * 1.35, Math.min(9, 5 + r * 0.4));
-  const colletLen = 10;
+  // Collet (ER-style)
+  const colletR = Math.max(shankR * 1.3, 11);
   const collet = new THREE.Mesh(
     new THREE.CylinderGeometry(colletR * 0.92, colletR, colletLen, 20),
     new THREE.MeshStandardMaterial({ color: 0x5a6068, metalness: 0.6, roughness: 0.32 })
@@ -117,10 +134,9 @@ export function createToolMesh(radius = 6) {
   collet.position.y = fluteLen + shankLen + colletLen / 2;
   g.add(collet);
 
-  const stubR = colletR * 0.55;
-  const stubLen = 12;
+  // Holder stub
   const stub = new THREE.Mesh(
-    new THREE.CylinderGeometry(stubR, stubR * 1.1, stubLen, 16),
+    new THREE.CylinderGeometry(colletR * 0.55, colletR * 0.62, stubLen, 16),
     new THREE.MeshStandardMaterial({ color: 0x3a3e44, metalness: 0.5, roughness: 0.4 })
   );
   stub.position.y = fluteLen + shankLen + colletLen + stubLen / 2;
@@ -133,15 +149,12 @@ export function createToolMesh(radius = 6) {
   tip.position.y = 0;
   g.add(tip);
 
-  g.userData.radius = r;
-  g.userData.diameter = D;
-  g.userData.fluteLen = fluteLen;
-  g.position.set(0, 50, 0);
+  g.userData.spec = { diameter: d, flute: fluteLen, overall };
   return g;
 }
 
-export function setToolDiameter(toolMesh, diameterMm) {
-  const r = Math.max(1.0, (diameterMm || 12) / 2);
+/** Bangun ulang geometri tool dari spesifikasi baru (dipanggil saat tool change). */
+export function setToolGeometry(toolMesh, spec) {
   while (toolMesh.children.length) {
     const c = toolMesh.children[0];
     if (c.geometry) c.geometry.dispose();
@@ -151,24 +164,21 @@ export function setToolDiameter(toolMesh, diameterMm) {
     }
     toolMesh.remove(c);
   }
-  const fresh = createToolMesh(r);
-  while (fresh.children.length) {
-    toolMesh.add(fresh.children[0]);
-  }
-  toolMesh.userData.radius = r;
-  toolMesh.userData.diameter = r * 2;
+  const fresh = createToolMesh(spec || DEFAULT_TOOL_SPEC);
+  while (fresh.children.length) toolMesh.add(fresh.children[0]);
+  toolMesh.userData.spec = fresh.userData.spec;
 }
 
-/** CNC work (x,y,z) → Three.js (x, z, y) */
+/** CNC (x,y,z) mesin → Three.js (x, z, y) — sumbu Y Three.js = Z mesin. */
 export function setToolPosition(toolMesh, mx, my, mz) {
   toolMesh.position.set(mx, mz, my);
 }
 
-/** Work-zero marker at (0,0,0) — G54 X0 Y0 Z0 */
-export function createWorkZeroMarker() {
+/** Marker work zero — diposisikan app pada wcsOffset WCS aktif (ruang mesin). */
+export function createWorkZeroMarker(size = 20) {
   const g = new THREE.Group();
   g.name = 'workZero';
-  const axes = new THREE.AxesHelper(20);
+  const axes = new THREE.AxesHelper(size);
   g.add(axes);
   const plate = new THREE.Mesh(
     new THREE.RingGeometry(1.5, 3, 24),
@@ -182,6 +192,35 @@ export function createWorkZeroMarker() {
     new THREE.MeshBasicMaterial({ color: 0x3fb950 })
   );
   g.add(dot);
+  return g;
+}
+
+/**
+ * Template vise (ragum) — visual, parameter bisa diganti.
+ * { spanX: panjang rahang, yMin/yMax: sisi stock yang dijepit, topZ: dasar stock }
+ */
+export function createVise({ spanX = 140, yMin = -40, yMax = 40, topZ = -20, jawHeight = 28 } = {}) {
+  const g = new THREE.Group();
+  g.name = 'vise';
+  const steel = new THREE.MeshStandardMaterial({ color: 0x707880, metalness: 0.65, roughness: 0.4 });
+  const steelDark = new THREE.MeshStandardMaterial({ color: 0x4a5058, metalness: 0.6, roughness: 0.45 });
+
+  const depth = (yMax - yMin) + 34;
+  const baseH = 16;
+  const base = new THREE.Mesh(new THREE.BoxGeometry(spanX + 26, baseH, depth), steelDark);
+  base.position.set(0, topZ - baseH / 2, (yMin + yMax) / 2);
+  base.castShadow = true;
+  base.receiveShadow = true;
+  g.add(base);
+
+  const jawT = 10;
+  for (const side of [-1, 1]) {
+    const y = side === -1 ? yMin - jawT / 2 : yMax + jawT / 2;
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(spanX + 16, jawHeight, jawT), steel);
+    jaw.position.set(0, topZ + jawHeight / 2 - 6, y);
+    jaw.castShadow = true;
+    g.add(jaw);
+  }
   return g;
 }
 
@@ -199,14 +238,14 @@ function colorForZ(z, trail) {
 }
 
 /**
- * Build toolpath LineSegments.
- * opts.mode = 'trail' → progressive path during Cycle Start (brighter)
- * opts.mode = 'preview' (default) → full GRAPH path (dim rapids)
- * opts.liveEnd = {x,y,z,type} optional current tool tip for live segment
+ * Bangun toolpath LineSegments dari titik KOORDINAT MESIN.
+ * points: [{x,y,z,type:'rapid'|'feed'|...}] — entri non-gerak dilewati.
+ * opts.mode = 'trail' → jalur yang sudah ditempuh; 'preview' → GRAPH penuh.
  */
-export function buildToolpathLines(moves, opts = {}) {
+export function buildToolpathLines(points, opts = {}) {
   const group = new THREE.Group();
-  if (!moves || moves.length < 1) return group;
+  const moves = (points || []).filter((p) => p.type === 'rapid' || p.type === 'feed');
+  if (moves.length < 1) return group;
 
   const isTrail = opts.mode === 'trail';
   const clearance = opts.rapidClearance ?? 15;
@@ -219,7 +258,8 @@ export function buildToolpathLines(moves, opts = {}) {
   const feedBuckets = new Map();
   const rapidPositions = [];
 
-  let prev = { x: 0, y: 0, z: Math.min(50, rapidCap) };
+  const prevStart = opts.start || { x: moves[0].x, y: moves[0].y, z: Math.min(moves[0].z, rapidCap) };
+  let prev = prevStart;
   for (const m of moves) {
     const isRapid = m.type === 'rapid';
     let z0 = prev.z;

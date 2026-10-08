@@ -350,10 +350,10 @@ header h1 {
 .offset-table tr.active-row { background: #1c2d1f; }
 .offset-table tr.active-row td:first-child { color: var(--green); font-weight: 700; }
 .offset-table input[type=number] {
-  width: 100%; max-width: 68px; background: #010409;
+  width: 100%; max-width: 54px; background: #010409;
   border: 1px solid var(--border); color: var(--text);
-  padding: 3px 5px; border-radius: 3px;
-  font-family: Consolas, monospace; font-size: 0.75rem;
+  padding: 3px 3px; border-radius: 3px;
+  font-family: Consolas, monospace; font-size: 0.68rem;
 }
 .offset-table input:focus { outline: none; border-color: var(--accent); }
 .setup-actions { display: flex; gap: 6px; margin-top: 2px; }
@@ -564,4 +564,48 @@ header h1 {
 @media (max-width: 900px) {
   .main { grid-template-columns: 1fr; grid-template-rows: 180px 1fr 220px; }
   .softkeys { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ---- v0.9 additions ---- */
+.dro-dtg {
+  font-family: Consolas, monospace; font-size: 0.68rem;
+  color: var(--text-dim); background: #010409;
+  border: 1px solid #21262d; border-radius: 4px;
+  padding: 4px 8px; margin-top: 6px; letter-spacing: 0.02em;
+  white-space: pre;
+}
+.stock-grid { display: flex; gap: 6px; margin-bottom: 6px; }
+.stock-grid label {
+  flex: 1; display: flex; flex-direction: column; gap: 2px;
+  font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase;
+}
+.stock-grid input[type=number] {
+  width: 100%; background: #010409; border: 1px solid var(--border);
+  color: var(--text); padding: 4px 6px; border-radius: 3px;
+  font-family: Consolas, monospace; font-size: 0.78rem;
+}
+.stock-grid input:disabled { opacity: 0.5; }
+.stock-place { margin-bottom: 6px; }
+.stock-place label {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 0.65rem; color: var(--text-dim);
+}
+.stock-place select {
+  background: #010409; border: 1px solid var(--border); color: var(--text);
+  padding: 4px 6px; border-radius: 3px; font-size: 0.72rem;
+}
+.setup-pane { display: flex; flex-direction: column; gap: 8px; }
+
+/* responsivitas — cegah teks terpotong di panel sempit (temuan UI v0.6) */
+@media (max-width: 1240px) {
+  .main { grid-template-columns: minmax(240px, 300px) 1fr minmax(240px, 280px); }
+}
+@media (max-width: 980px) {
+  .main { grid-template-columns: minmax(220px, 1fr) 1fr; grid-template-rows: 1fr 260px; }
+  .right-panel { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border); }
+}
+@media (max-width: 700px) {
+  .main { grid-template-columns: 1fr; grid-template-rows: 220px 1fr 260px; }
+  header h1 { font-size: 0.78rem; }
+  .hdr-right { display: none; }
 }

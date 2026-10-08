@@ -18,7 +18,7 @@
 <body>
   <header>
     <div class="hdr-left">
-      <h1>CNC Milling Simulator <span class="badge">v0.8.0</span></h1>
+      <h1>CNC Milling Simulator <span class="badge">v0.9.0</span></h1>
       <div class="mode-tabs">
         <button class="mode-tab" data-mode="setup">SETUP</button>
         <button class="mode-tab active" data-mode="edit">EDIT</button>
@@ -68,6 +68,7 @@
             <button class="subtab active" data-sub="work">WORK</button>
             <button class="subtab" data-sub="tool">TOOL</button>
             <button class="subtab" data-sub="jog">JOG</button>
+            <button class="subtab" data-sub="stock">STOCK</button>
           </span>
         </div>
 
@@ -97,6 +98,27 @@
                 <td><input type="number" step="0.001" value="0" data-axis="z" /></td>
                 <td><button class="btn btn-sm btn-set-zero">ZERO</button></td>
               </tr>
+              <tr data-wcs="G57">
+                <td>G57</td>
+                <td><input type="number" step="0.001" value="0" data-axis="x" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="y" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="z" /></td>
+                <td><button class="btn btn-sm btn-set-zero">ZERO</button></td>
+              </tr>
+              <tr data-wcs="G58">
+                <td>G58</td>
+                <td><input type="number" step="0.001" value="0" data-axis="x" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="y" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="z" /></td>
+                <td><button class="btn btn-sm btn-set-zero">ZERO</button></td>
+              </tr>
+              <tr data-wcs="G59">
+                <td>G59</td>
+                <td><input type="number" step="0.001" value="0" data-axis="x" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="y" /></td>
+                <td><input type="number" step="0.001" value="0" data-axis="z" /></td>
+                <td><button class="btn btn-sm btn-set-zero">ZERO</button></td>
+              </tr>
             </tbody>
           </table>
           <div class="setup-actions">
@@ -107,25 +129,28 @@
         <div id="setupTool" class="setup-pane" style="display:none">
           <div class="setup-hint">Tool Length / Diameter — TOOL OFFSET MEASURE</div>
           <table class="offset-table" id="toolOffsetTable">
-            <thead><tr><th>T</th><th>Length</th><th>Dia</th><th>Type</th></tr></thead>
+            <thead><tr><th>T</th><th>Length</th><th>Dia</th><th>Flute</th><th>Overall</th></tr></thead>
             <tbody>
               <tr data-tool="1" class="active-row">
                 <td>T1</td>
                 <td><input type="number" step="0.001" value="0" data-field="length" /></td>
                 <td><input type="number" step="0.1" value="6" data-field="dia" /></td>
-                <td>End Mill</td>
+                <td><input type="number" step="1" value="18" data-field="flute" /></td>
+                <td><input type="number" step="1" value="80" data-field="overall" /></td>
               </tr>
               <tr data-tool="2">
                 <td>T2</td>
                 <td><input type="number" step="0.001" value="0" data-field="length" /></td>
                 <td><input type="number" step="0.1" value="10" data-field="dia" /></td>
-                <td>End Mill</td>
+                <td><input type="number" step="1" value="30" data-field="flute" /></td>
+                <td><input type="number" step="1" value="95" data-field="overall" /></td>
               </tr>
               <tr data-tool="3">
                 <td>T3</td>
                 <td><input type="number" step="0.001" value="0" data-field="length" /></td>
                 <td><input type="number" step="0.1" value="12" data-field="dia" /></td>
-                <td>End Mill</td>
+                <td><input type="number" step="1" value="36" data-field="flute" /></td>
+                <td><input type="number" step="1" value="100" data-field="overall" /></td>
               </tr>
             </tbody>
           </table>
@@ -165,6 +190,33 @@
             <button class="btn" id="btnJogHome">ZERO RETURN (home)</button>
           </div>
         </div>
+
+        <div id="setupStock" class="setup-pane" style="display:none">
+          <div class="setup-hint">STOCK — ukuran &amp; posisi terhadap work zero (G54)</div>
+          <div class="stock-grid">
+            <label>X <input type="number" id="stockX" value="100" step="1" /></label>
+            <label>Y <input type="number" id="stockY" value="80" step="1" /></label>
+            <label>Z <input type="number" id="stockZ" value="20" step="1" /></label>
+          </div>
+          <div class="stock-place">
+            <label>Posisi terhadap G54
+              <select id="stockPlacement">
+                <option value="top-center">Tengah — Z0 di atas (top-center)</option>
+                <option value="top-corner">Sudut — Z0 di atas (top-corner)</option>
+                <option value="custom">Manual (origin mesin)</option>
+              </select>
+            </label>
+          </div>
+          <div class="stock-grid">
+            <label>oX <input type="number" id="stockOx" value="-50" step="0.5" disabled /></label>
+            <label>oY <input type="number" id="stockOy" value="-40" step="0.5" disabled /></label>
+            <label>oZ <input type="number" id="stockOz" value="-20" step="0.5" disabled /></label>
+          </div>
+          <div class="setup-actions">
+            <button class="btn btn-primary" id="btnApplyStock">Apply Stock</button>
+          </div>
+          <div class="setup-hint" id="stockInfo">origin mesin: -50.0, -40.0, -20.0</div>
+        </div>
       </div>
     </div>
 
@@ -189,6 +241,7 @@
         <div class="dro-row"><div class="dro-axis x">X</div><div class="dro-val" id="droX">0.000</div></div>
         <div class="dro-row"><div class="dro-axis y">Y</div><div class="dro-val" id="droY">0.000</div></div>
         <div class="dro-row"><div class="dro-axis z">Z</div><div class="dro-val" id="droZ">50.000</div></div>
+        <div class="dro-dtg" id="droDtg" title="Dist to go (jarak ke target blok aktif)">X0.000  Y0.000  Z0.000</div>
       </div>
 
       <div class="active-codes">
@@ -221,6 +274,9 @@
         <div class="btn-row" style="margin-top:6px">
           <label class="chk"><input type="checkbox" id="chkSingleBlock" /> Single Block</label>
           <label class="chk"><input type="checkbox" id="chkDryRun" /> Dry Run</label>
+        </div>
+        <div class="btn-row" style="margin-top:2px">
+          <label class="chk"><input type="checkbox" id="chkOptStop" checked /> Opt Stop (M01)</label>
         </div>
       </div>
 

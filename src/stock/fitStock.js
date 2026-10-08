@@ -1,11 +1,11 @@
 /**
- * Compute stock bounds from toolpath moves for auto-fit.
- * Stock TOP is at Z=0 (work zero / top of part).
+ * Hitung bounds stock dari titik toolpath DALAM KOORDINAT MESIN (auto-fit).
+ * Dipakai sebagai SARAN ukuran/posisi stock — user tetap bisa override manual.
  */
-export function boundsFromMoves(moves, opts = {}) {
+
+export function boundsFromPoints(points, opts = {}) {
   const {
     padXY = 5,
-    padZTop = 0,
     padZBot = 4,
     minSizeX = 20,
     minSizeY = 20,
@@ -13,19 +13,20 @@ export function boundsFromMoves(moves, opts = {}) {
     maxSizeZ = 80,
     defaultZ = 20,
     maxVoxels = 500000,
-    toolRadius = 3,
+    toolRadius = 6,
+    topZ = 0,          // bidang Z0 program (offset Z WCS aktif) — top stock di sini
     cutZMax = 5,
     outlierZ = 200
   } = opts;
 
-  if (!moves || !moves.length) return null;
+  if (!points || !points.length) return null;
 
   const nearWork = [];
   const cutZs = [];
 
-  for (const m of moves) {
-    if (Math.abs(m.z) > outlierZ) continue;
-    if (m.type === 'feed' && m.z <= cutZMax) {
+  for (const m of points) {
+    if (Math.abs(m.z) > outlierZ + Math.abs(topZ)) continue;
+    if (m.type === 'feed' && m.z <= topZ + cutZMax) {
       cutZs.push(m.z);
       nearWork.push(m);
     }
@@ -33,8 +34,8 @@ export function boundsFromMoves(moves, opts = {}) {
 
   const xySrc = nearWork.length
     ? nearWork
-    : moves.filter((m) => m.type === 'feed' && Math.abs(m.z) <= outlierZ);
-  const xyPoints = xySrc.length ? xySrc : moves.filter((m) => Math.abs(m.z) <= outlierZ);
+    : points.filter((m) => m.type === 'feed' && Math.abs(m.z) <= outlierZ);
+  const xyPoints = xySrc.length ? xySrc : points.filter((m) => Math.abs(m.z) <= outlierZ);
   if (!xyPoints.length) return null;
 
   let minX = Infinity, maxX = -Infinity;
@@ -58,11 +59,11 @@ export function boundsFromMoves(moves, opts = {}) {
   let stockTop, stockBot;
   if (cutZs.length) {
     const minCut = Math.min(...cutZs);
-    stockTop = 0;
-    stockBot = Math.min(minCut, 0) - padZBot;
+    stockTop = topZ;
+    stockBot = Math.min(minCut, topZ) - padZBot;
   } else {
-    stockTop = 0;
-    stockBot = -defaultZ;
+    stockTop = topZ;
+    stockBot = topZ - defaultZ;
   }
 
   let sizeZ = stockTop - stockBot;
