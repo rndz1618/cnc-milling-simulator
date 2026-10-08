@@ -1,4 +1,4 @@
-# CNC Milling Simulator v0.7.0-rA1 — Training
+# CNC Milling Simulator v0.9.0 — Training
 
 Modular web CNC milling trainer with voxel material removal and Haas-style control panel.
 
@@ -6,18 +6,22 @@ Modular web CNC milling trainer with voxel material removal and Haas-style contr
 
 | Rev | Version | Notes |
 |-----|---------|-------|
+| — | 0.9.0 | Machine-coordinate engine (WCS G54–G59, G43/G28, DTG, soft-limit halt), parser hardening (N-lines, canned cycles G81–G83, G20/G21, alarm halts, M97/O-subs), data-driven tool geometry, unit tests |
+| — | 0.8.0 | Alarm panel F3, WCS/Tool localStorage, tool auto-apply, chunk loader |
 | rA1 | 0.7.0 | Progressive toolpath trail, live segment, dim rapids / bright feed |
 | — | 0.6.x | Soft keys F1–F8, training checklist, override buttons, WCS, work zero |
 
-## v0.7 features (Tahap 2)
-
-- **Progressive toolpath trail** — during Cycle Start only the path already travelled is drawn
-- **Live segment** — current move from last completed point to tool tip
-- **GRAPH (F4)** — full path preview when idle; hidden while running
-- **DRY RUN (F8)** — stock mesh hidden
-- Dim rapid lines + depth-coloured feed lines
-
 ## Run
+
+```bash
+npm install
+npm run dev      # dev server (Vite)
+npm run build    # production build → dist/
+npm run preview  # serve the production build
+npm test         # parser/interpreter unit tests (golden file: O20018)
+```
+
+Tanpa Node, tetap bisa jalan sebagai static site (three.js via CDN importmap):
 
 ```bash
 python3 -m http.server 8080

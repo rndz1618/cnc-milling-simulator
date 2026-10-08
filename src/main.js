@@ -1,40 +1,898 @@
-// v0.8.0 — static chunk loader (A highlight, B alarm, C tool auto, D localStorage)
-const base = new URL('.', import.meta.url).href;
-async function boot() {
-  const urls = [
-    './main_body_a1.txt',
-    './main_body_a2.txt',
-    './main_bb0.txt',
-    './main_bb1.txt',
-    './main_bb2.txt',
-    './main_bb3.txt',
-    './main_bb4.txt'
-  ];
-  const parts = await Promise.all(
-    urls.map((u) =>
-      fetch(new URL(u, import.meta.url)).then((r) => {
-        if (!r.ok) throw new Error(u + ' HTTP ' + r.status);
-        return r.text();
-      })
-    )
-  );
-  let code = parts.join('');
-  code = code.replace(/from\s+['"](\.[^'"]+)['"]/g, (_, rel) => {
-    return "from '" + new URL(rel, base).href + "'";
-  });
-  code = code.replace(
-    /from\s+['"]three['"]/g,
-    "from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js'"
-  );
-  const s = document.createElement('script');
-  s.type = 'module';
-  s.textContent = code;
-  document.head.appendChild(s);
-}
-boot().catch((e) => {
-  console.error(e);
-  document.body.insertAdjacentHTML(
-    'beforeend',
-    '<pre style="color:#f55;padding:12px;white-space:pre-wrap">Boot: ' + e + '</pre>'
-  );
+import { VoxelStock } from './stock/VoxelStock.js';
+import { boundsFromMoves, formatStockSize } from './stock/fitStock.js';
+import { parseGCode } from './machine/Parser.js';
+import { createMachineState, updateWorkCoords, machineCoords } from './machine/MachineState.js';
+import { Simulator } from './sim/Simulator.js';
+import {
+  createScene,
+  createToolMesh,
+  setToolDiameter,
+  setToolPosition,
+  buildToolpathLines,
+  createWorkZeroMarker
+} from './view/Scene.js';
+import * as THREE from 'three';
+import {
+  trainState, markTrain, openTraining, closeTraining, resetTraining, renderTrainSteps
+} from './train.js';
+
+const SAMPLE = `; Contour + Pocket – Stock 100x80x20 | Tool D6
+; Z0 = top of stock
+G21 G90 G17 G54
+T1 M6
+S12000 M3
+G0 Z50
+G0 X0 Y0
+
+; Approach
+G0 X10 Y10
+G0 Z5
+G1 Z-2 F200
+
+; Outer contour (linear + G2 arcs)
+G1 X85 F800
+G2 X90 Y15 I0 J5
+G1 Y65
+G2 X85 Y70 I-5 J0
+G1 X15
+G2 X10 Y65 I0 J-5
+G1 Y15
+G2 X15 Y10 I5 J0
+
+; Pocket
+G0 Z5
+G0 X25 Y25
+G1 Z-5 F150
+G1 X75 F600
+G1 Y55
+G1 X25
+G1 Y25
+
+; Finish
+G0 Z5
+G0 X20 Y20
+G1 Z-5 F120
+G1 X80 F400
+G1 Y60
+G1 X20
+G1 Y20
+
+G0 Z50
+G0 X0 Y0
+M5
+M30
+`;
+
+const container = document.getElementById('canvas-container');
+const { scene, camera, renderer, controls, bed, grid } = createScene(container);
+
+const stock = new VoxelStock({
+  sizeX: 100, sizeY: 80, sizeZ: 20, res: 1.0,
+  originX: 0, originY: 0, originZ: -20
 });
+stock.updateMesh(scene, true);
+
+const toolMesh = createToolMesh(6);
+scene.add(toolMesh);
+
+const workZeroMarker = createWorkZeroMarker();
+scene.add(workZeroMarker);
+
+let toolpathGroup = null;
+let trailGroup = null;
+let graphVisible = true;
+let allMoves = [];
+
+const machine = createMachineState();
+machine.toolDiameter = 12;
+
+const wcsTable = {
+  G54: { x: 0, y: 0, z: 0 },
+  G55: { x: 0, y: 0, z: 0 },
+  G56: { x: 0, y: 0, z: 0 }
+};
+let activeWcs = 'G54';
+const toolTable = {
+  1: { length: 0, dia: 6, type: 'End Mill' },
+  2: { length: 0, dia: 10, type: 'End Mill' },
+  3: { length: 0, dia: 12, type: 'End Mill' }
+};
+let activeTool = 1;
+let droMode = 'work';
+let jogInc = 0.1;
+let currentMode = 'edit';
+let lastToolDia = 12;
+let lastActiveLine = null;
+let alarmHistory = [];
+const LS_WCS = 'cnc-sim-wcs';
+const LS_TOOLS = 'cnc-sim-tools';
+
+function loadPersistedOffsets() {
+  try {
+    const w = JSON.parse(localStorage.getItem(LS_WCS) || 'null');
+    if (w && typeof w === 'object') {
+      for (const k of Object.keys(wcsTable)) {
+        if (w[k]) {
+          wcsTable[k].x = +w[k].x || 0;
+          wcsTable[k].y = +w[k].y || 0;
+          wcsTable[k].z = +w[k].z || 0;
+        }
+      }
+    }
+    const t = JSON.parse(localStorage.getItem(LS_TOOLS) || 'null');
+    if (t && typeof t === 'object') {
+      for (const k of Object.keys(toolTable)) {
+        if (t[k]) {
+          toolTable[k].length = +t[k].length || 0;
+          toolTable[k].dia = +t[k].dia || toolTable[k].dia;
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+function savePersistedOffsets() {
+  try {
+    localStorage.setItem(LS_WCS, JSON.stringify(wcsTable));
+    localStorage.setItem(LS_TOOLS, JSON.stringify(toolTable));
+  } catch (_) {}
+}
+
+function syncOffsetInputsFromTables() {
+  document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
+    const wcs = row.dataset.wcs;
+    const o = wcsTable[wcs];
+    if (!o) return;
+    row.querySelectorAll('input').forEach((inp) => {
+      const ax = inp.dataset.axis;
+      if (ax && o[ax] != null) inp.value = o[ax];
+    });
+  });
+  document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+    const tn = row.dataset.tool;
+    const t = toolTable[tn];
+    if (!t) return;
+    row.querySelectorAll('input').forEach((inp) => {
+      if (inp.dataset.field === 'length') inp.value = t.length;
+      if (inp.dataset.field === 'dia') inp.value = t.dia;
+    });
+  });
+}
+
+function pushAlarm(msg, line) {
+  const entry = { t: new Date().toLocaleTimeString(), msg, line: line ?? null };
+  alarmHistory.unshift(entry);
+  if (alarmHistory.length > 30) alarmHistory.pop();
+  if ($('sbAlarm')) {
+    $('sbAlarm').textContent = 'ALARM: ' + msg;
+    $('sbAlarm').className = 'sb-item alarm';
+  }
+}
+
+function clearAlarms() {
+  alarmHistory = [];
+  if ($('sbAlarm')) {
+    $('sbAlarm').textContent = 'NO ALARMS';
+    $('sbAlarm').className = 'sb-item ok';
+  }
+}
+
+function showAlarmPanel() {
+  let panel = $('alarmPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'alarmPanel';
+    panel.className = 'alarm-panel';
+    panel.innerHTML =
+      '<div class="alarm-panel-hdr"><span>ALARM / MESSAGES</span>' +
+      '<button class="btn btn-sm" id="btnAlarmClose">✕</button></div>' +
+      '<div class="alarm-panel-body" id="alarmPanelBody"></div>' +
+      '<div class="alarm-panel-foot">' +
+      '<button class="btn btn-sm" id="btnAlarmClear">Clear All</button></div>';
+    document.body.appendChild(panel);
+    panel.querySelector('#btnAlarmClose').onclick = () => { panel.style.display = 'none'; };
+    panel.querySelector('#btnAlarmClear').onclick = () => {
+      clearAlarms();
+      renderAlarmList();
+    };
+  }
+  renderAlarmList();
+  panel.style.display = 'flex';
+}
+
+function renderAlarmList() {
+  const body = $('alarmPanelBody');
+  if (!body) return;
+  if (!alarmHistory.length) {
+    body.innerHTML = '<div class="alarm-empty">NO ALARMS — sistem siap</div>';
+    return;
+  }
+  body.innerHTML = alarmHistory.map((a) =>
+    '<div class="alarm-row">' +
+    '<span class="alarm-time">' + a.t + '</span>' +
+    (a.line != null ? '<span class="alarm-ln">N' + a.line + '</span>' : '') +
+    '<span class="alarm-msg">' + a.msg.replace(/</g, '&lt;') + '</span></div>'
+  ).join('');
+}
+
+function applyToolFromTable(toolNum) {
+  const t = toolTable[toolNum];
+  if (!t) return;
+  machine.tool = toolNum;
+  machine.toolLength = t.length;
+  machine.toolDiameter = t.dia;
+  if (typeof setToolDiameter === 'function' && toolMesh) {
+    setToolDiameter(toolMesh, t.dia);
+  }
+  lastToolDia = t.dia;
+  if ($('simTool')) $('simTool').textContent = 'T' + toolNum + ' Ø' + t.dia;
+}
+
+function checkSoftLimits() {
+  const lim = { x: 200, y: 200, zMin: -80, zMax: 200 };
+  const msgs = [];
+  if (Math.abs(machine.x) > lim.x) msgs.push('SOFT LIMIT X');
+  if (Math.abs(machine.y) > lim.y) msgs.push('SOFT LIMIT Y');
+  if (machine.z < lim.zMin || machine.z > lim.zMax) msgs.push('SOFT LIMIT Z');
+  if (msgs.length) {
+    const msg = msgs.join(' / ');
+    if (!alarmHistory.length || alarmHistory[0].msg !== msg) pushAlarm(msg, lastActiveLine);
+  }
+}
+
+const sim = new Simulator({
+  stock,
+  machine,
+  onUpdate: refreshUI,
+  onLine: highlightLine
+});
+
+const $ = (id) => document.getElementById(id);
+
+function fmt(n) {
+  return (n ?? 0).toFixed(3);
+}
+
+function disposeGroup(g) {
+  if (!g) return;
+  scene.remove(g);
+  g.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) {
+      if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+      else o.material.dispose();
+    }
+  });
+}
+
+function rebuildTrail() {
+  disposeGroup(trailGroup);
+  trailGroup = null;
+  if (!allMoves.length || sim.index <= 0) return;
+  const done = allMoves.slice(0, sim.index);
+  const liveEnd = (sim.playing && sim.index < allMoves.length)
+    ? {
+        x: machine.x, y: machine.y, z: machine.z,
+        type: allMoves[sim.index]?.type || 'feed'
+      }
+    : null;
+  trailGroup = buildToolpathLines(done, { mode: 'trail', rapidClearance: 15, liveEnd });
+  scene.add(trailGroup);
+}
+
+function setGraphVisible(vis) {
+  graphVisible = !!vis;
+  if (toolpathGroup) toolpathGroup.visible = graphVisible && !sim.playing;
+  document.querySelectorAll('.sk[data-sk="f4"]').forEach((b) => {
+    b.classList.toggle('active', graphVisible);
+  });
+  const lbl = $('sk4');
+  if (lbl) lbl.textContent = graphVisible ? 'GRAPH ON' : 'GRAPH';
+  if ($('sbMsg')) $('sbMsg').textContent = graphVisible ? 'GRAPH ON — path preview' : 'GRAPH OFF';
+}
+
+function applyDryRun(on) {
+  sim.dryRun = !!on;
+  const c = $('chkDryRun');
+  if (c) c.checked = !!on;
+  document.querySelectorAll('.sk[data-sk="f8"]').forEach((b) => {
+    b.classList.toggle('active', !!on);
+  });
+  const lbl = $('sk8');
+  if (lbl) lbl.textContent = on ? 'DRY ON' : 'DRY RUN';
+  if (stock.mesh) stock.mesh.visible = !on;
+  if ($('sbMsg')) $('sbMsg').textContent = on ? 'DRY RUN — material hidden' : 'DRY RUN OFF';
+  updateStatusBar();
+}
+
+function updateActiveCodes() {
+  const codes = $('activeCodes');
+  if (!codes) return;
+  const chips = [];
+  chips.push('<span class="code-chip">G90</span>');
+  chips.push('<span class="code-chip accent">' + activeWcs + '</span>');
+  chips.push('<span class="code-chip">G17</span>');
+  chips.push('<span class="code-chip">G21</span>');
+  if (machine.feed > 0) {
+    chips.push('<span class="code-chip">F' + Math.round(machine.feed) + '</span>');
+  }
+  codes.innerHTML = chips.join('');
+
+  const ti = $('activeToolInfo');
+  if (ti) {
+    const sp = machine.spindleOn
+      ? '<span class="code-chip on">M3 S' + (machine.spindle || 0) + '</span>'
+      : '<span class="code-chip">M5</span>';
+    ti.innerHTML =
+      '<span class="code-chip accent">T' + (machine.tool || 1) + '</span>' +
+      '<span class="code-chip">H' + String(machine.tool || 1).padStart(2, '0') + '</span>' +
+      '<span class="code-chip">D' + String(machine.tool || 1).padStart(2, '0') + '</span>' +
+      sp;
+  }
+
+  if ($('hdrSpindle')) {
+    $('hdrSpindle').textContent = machine.spindleOn
+      ? 'S' + (machine.spindle || 0)
+      : 'S OFF';
+    $('hdrSpindle').style.color = machine.spindleOn ? '#3fb950' : '';
+  }
+}
+
+function updateStatusBar() {
+  const flags = [];
+  if (sim.singleBlock) flags.push('SINGLE BLOCK');
+  if (sim.dryRun) flags.push('DRY RUN');
+  if (sim.playing) flags.push('CYCLE ON');
+  if ($('sbFlags')) $('sbFlags').textContent = flags.length ? flags.join(' · ') : '—';
+  if ($('hdrMode')) $('hdrMode').textContent = currentMode.toUpperCase();
+}
+
+function refreshUI() {
+  if (machine.tool && toolTable[machine.tool] && lastToolDia !== toolTable[machine.tool].dia && machine.tool !== activeTool) {
+    applyToolFromTable(machine.tool);
+    activeTool = machine.tool;
+  } else if (machine.tool && machine.tool !== activeTool && toolTable[machine.tool]) {
+    applyToolFromTable(machine.tool);
+    activeTool = machine.tool;
+  }
+  checkSoftLimits();
+
+  if (droMode === 'machine') {
+    const mc = typeof machineCoords === 'function' ? machineCoords(machine) : {
+      x: machine.x + (machine.g54?.x || 0),
+      y: machine.y + (machine.g54?.y || 0),
+      z: machine.z + (machine.g54?.z || 0) + (machine.toolLength || 0)
+    };
+    if ($('droX')) $('droX').textContent = fmt(mc.x);
+    if ($('droY')) $('droY').textContent = fmt(mc.y);
+    if ($('droZ')) $('droZ').textContent = fmt(mc.z);
+  } else {
+    if ($('droX')) $('droX').textContent = fmt(machine.x);
+    if ($('droY')) $('droY').textContent = fmt(machine.y);
+    if ($('droZ')) $('droZ').textContent = fmt(machine.z);
+  }
+
+  if ($('simStatus')) {
+    $('simStatus').textContent = sim.playing
+      ? 'RUN'
+      : (sim.index >= sim.moves.length && sim.moves.length ? 'DONE' : 'IDLE');
+  }
+  if ($('simTool')) {
+    $('simTool').textContent = 'T' + (machine.tool || 1) + ' Ø' + (machine.toolDiameter || 6);
+  }
+  if ($('stockLeft')) {
+    $('stockLeft').textContent = Math.round(stock.remainingRatio * 100) + '%';
+  }
+
+  const pct = sim.moves.length ? Math.min(100, (sim.index / sim.moves.length) * 100) : 0;
+  if ($('progressBar')) $('progressBar').style.width = pct + '%';
+  if ($('progressText')) $('progressText').textContent = Math.round(pct) + '%';
+
+  const total = sim.totalTime || 1;
+  const elapsed = sim.elapsed || 0;
+  const fmtT = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  };
+  if ($('timeText')) $('timeText').textContent = fmtT(elapsed) + ' / ' + fmtT(total);
+  if ($('hdrTime')) $('hdrTime').textContent = fmtT(elapsed);
+
+  setToolPosition(toolMesh, machine.x, machine.y, machine.z);
+  if (machine.toolDiameter && machine.toolDiameter !== lastToolDia) {
+    lastToolDia = machine.toolDiameter;
+    setToolDiameter(toolMesh, lastToolDia);
+  }
+  updateActiveCodes();
+  updateStatusBar();
+
+  if (toolpathGroup) toolpathGroup.visible = graphVisible && !sim.playing;
+
+  if ($('btnPlay')) $('btnPlay').disabled = sim.playing;
+  if ($('btnPause')) $('btnPause').disabled = !sim.playing;
+  if ($('btnStop')) $('btnStop').disabled = !sim.playing && sim.index === 0;
+}
+
+function highlightLine(lineNum) {
+  const info = $('lineInfo');
+  if (info) {
+    info.textContent = lineNum != null ? 'Baris aktif: ' + lineNum : 'Baris aktif: —';
+    info.classList.toggle('line-live', lineNum != null && sim && sim.playing);
+  }
+  if (lineNum === lastActiveLine) return;
+  lastActiveLine = lineNum;
+  const lines = document.querySelectorAll('.gline');
+  let activeEl = null;
+  lines.forEach((el) => {
+    const ln = +el.dataset.line;
+    el.classList.remove('active', 'done');
+    if (lineNum != null) {
+      if (ln < lineNum) el.classList.add('done');
+      if (ln === lineNum) {
+        el.classList.add('active');
+        activeEl = el;
+      }
+    }
+  });
+  if (activeEl) {
+    activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+
+function showLinesView(text) {
+  const lines = text.split(/\r?\n/);
+  const wrap = $('gcodeLines');
+  if (!wrap) return;
+  wrap.innerHTML = lines.map((t, i) =>
+    '<div class="gline" data-line="' + (i + 1) + '"><span class="ln">' + (i + 1) +
+    '</span><span class="tx">' + t.replace(/</g, '&lt;') + '</span></div>'
+  ).join('');
+  if ($('gcodeInput')) $('gcodeInput').style.display = 'none';
+  wrap.style.display = 'block';
+}
+
+function showEditView() {
+  if ($('gcodeInput')) $('gcodeInput').style.display = 'block';
+  if ($('gcodeLines')) $('gcodeLines').style.display = 'none';
+}
+
+function loadProgram() {
+  const text = ($('gcodeInput') && $('gcodeInput').value) || SAMPLE;
+  const parsed = parseGCode(text);
+  const moves = parsed.moves || [];
+  const totalTime = parsed.totalTime || 0;
+  if (parsed.alarms && parsed.alarms.length) {
+    parsed.alarms.forEach((a) => pushAlarm(a.msg, a.line));
+  } else if ($('sbAlarm') && !alarmHistory.length) {
+    $('sbAlarm').textContent = 'NO ALARMS';
+    $('sbAlarm').className = 'sb-item ok';
+  }
+  allMoves = moves;
+  sim.loadMoves(moves, totalTime);
+  if ($('lineCount')) $('lineCount').textContent = moves.length + ' gerakan';
+
+  const firstTool = moves.find((m) => m.tool)?.tool;
+  if (firstTool && toolTable[firstTool]) {
+    applyToolFromTable(firstTool);
+    activeTool = firstTool;
+    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+      row.classList.toggle('active-row', +row.dataset.tool === +firstTool);
+    });
+  }
+
+  disposeGroup(toolpathGroup);
+  toolpathGroup = null;
+  disposeGroup(trailGroup);
+  trailGroup = null;
+
+  toolpathGroup = buildToolpathLines(moves);
+  toolpathGroup.visible = graphVisible;
+  scene.add(toolpathGroup);
+
+  const autoFit = $('chkAutoFit') && $('chkAutoFit').checked;
+  if (autoFit && moves.length) {
+    const toolR = (machine.toolDiameter || 12) / 2;
+    const b = boundsFromMoves(moves, { toolRadius: toolR });
+    if (b) {
+      stock.resize(b, scene);
+      if (bed) {
+        bed.position.set(b.centerX, b.originZ - 5, b.centerY);
+        bed.scale.set(Math.max(1, b.sizeX / 240), 1, Math.max(1, b.sizeY / 200));
+      }
+      if (grid) grid.position.set(b.centerX, b.originZ + 0.1, b.centerY);
+      controls.target.set(b.centerX, b.centerZ, b.centerY);
+      const span = Math.max(b.sizeX, b.sizeY, b.sizeZ * 2);
+      camera.position.set(
+        b.centerX + span * 0.9,
+        b.centerZ + span * 0.7,
+        b.centerY + span * 1.1
+      );
+      controls.update();
+      if ($('stockSizeLabel')) $('stockSizeLabel').textContent = formatStockSize(b);
+      if ($('sbMsg')) $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b);
+    }
+  }
+
+  stock.reset();
+  stock.updateMesh(scene, true);
+  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
+  showLinesView(text);
+  refreshUI();
+}
+
+function jogAxis(axis, dir) {
+  if (currentMode !== 'setup') return;
+  machine[axis] += dir * jogInc;
+  if (axis === 'x') machine.x = Math.max(-200, Math.min(200, machine.x));
+  if (axis === 'y') machine.y = Math.max(-200, Math.min(200, machine.y));
+  if (axis === 'z') machine.z = Math.max(-80, Math.min(200, machine.z));
+  refreshUI();
+}
+
+if ($('btnLoad')) $('btnLoad').addEventListener('click', loadProgram);
+if ($('btnFitStock')) {
+  $('btnFitStock').addEventListener('click', () => {
+    if ($('chkAutoFit')) $('chkAutoFit').checked = true;
+    loadProgram();
+  });
+}
+if ($('btnExample')) $('btnExample').addEventListener('click', () => {
+  if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
+  showEditView();
+});
+if ($('btnClear')) $('btnClear').addEventListener('click', () => {
+  if ($('gcodeInput')) $('gcodeInput').value = '';
+  showEditView();
+});
+if ($('btnEditMode')) $('btnEditMode').addEventListener('click', showEditView);
+
+if ($('fileInput')) $('fileInput').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    if ($('gcodeInput')) $('gcodeInput').value = r.result;
+    showEditView();
+  };
+  r.readAsText(f);
+});
+
+if ($('btnPlay')) $('btnPlay').addEventListener('click', () => {
+  if (toolpathGroup) toolpathGroup.visible = false;
+  sim.play();
+  refreshUI();
+  if (sim.dryRun) markTrain('dryrun');
+  else markTrain('cyclestart');
+});
+if ($('btnPause')) $('btnPause').addEventListener('click', () => { sim.pause(); refreshUI(); });
+if ($('btnStop')) $('btnStop').addEventListener('click', () => {
+  sim.stop();
+  disposeGroup(trailGroup);
+  trailGroup = null;
+  if (toolpathGroup) toolpathGroup.visible = graphVisible;
+  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
+  refreshUI();
+});
+if ($('btnStep')) $('btnStep').addEventListener('click', () => { sim.step(); refreshUI(); });
+if ($('btnReset')) $('btnReset').addEventListener('click', () => {
+  sim.stop();
+  stock.reset();
+  stock.updateMesh(scene, true);
+  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
+  disposeGroup(trailGroup);
+  trailGroup = null;
+  if (toolpathGroup) toolpathGroup.visible = graphVisible;
+  refreshUI();
+});
+
+const chkSB = $('chkSingleBlock');
+if (chkSB) chkSB.addEventListener('change', (e) => {
+  sim.singleBlock = e.target.checked;
+  document.querySelectorAll('.sk[data-sk="f7"]').forEach((b) => b.classList.toggle('active', e.target.checked));
+  updateStatusBar();
+});
+const chkDR = $('chkDryRun');
+if (chkDR) chkDR.addEventListener('change', (e) => applyDryRun(e.target.checked));
+
+document.querySelectorAll('.ovr-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const kind = btn.dataset.ovr;
+    const val = parseFloat(btn.dataset.val);
+    document.querySelectorAll('.ovr-btn[data-ovr="' + kind + '"]').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (kind === 'feed') {
+      sim.feedOvr = val / 100;
+      if ($('feedVal')) $('feedVal').textContent = val + '%';
+    } else if (kind === 'rapid') {
+      sim.rapidOvr = val / 100;
+      if ($('rapidVal')) $('rapidVal').textContent = val + '%';
+    } else if (kind === 'sim') {
+      sim.simSpeed = val;
+      if ($('speedLabel')) $('speedLabel').textContent = val + '\u00d7';
+    }
+  });
+});
+sim.feedOvr = 1;
+sim.rapidOvr = 0.5;
+sim.simSpeed = 1;
+
+if ($('btnResetView')) $('btnResetView').addEventListener('click', () => {
+  camera.position.set(160, 110, 200);
+  controls.target.set(50, 0, 40);
+  controls.update();
+});
+if ($('btnTopView')) $('btnTopView').addEventListener('click', () => {
+  camera.position.set(50, 180, 40);
+  controls.target.set(50, 0, 40);
+  controls.update();
+});
+if ($('btnIsoView')) $('btnIsoView').addEventListener('click', () => {
+  camera.position.set(160, 110, 200);
+  controls.target.set(50, 0, 40);
+  controls.update();
+});
+
+document.querySelectorAll('.mode-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = btn.dataset.mode;
+    if ($('simMode')) $('simMode').textContent = currentMode.toUpperCase();
+    const prog = $('panelProgram');
+    const setup = $('panelSetup');
+    if (currentMode === 'setup') {
+      if (prog) prog.style.display = 'none';
+      if (setup) setup.style.display = 'flex';
+    } else {
+      if (prog) prog.style.display = 'flex';
+      if (setup) setup.style.display = 'none';
+    }
+    updateStatusBar();
+  });
+});
+
+document.querySelectorAll('.subtab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.subtab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const sub = btn.dataset.sub;
+    if ($('setupWork')) $('setupWork').style.display = sub === 'work' ? 'flex' : 'none';
+    if ($('setupTool')) $('setupTool').style.display = sub === 'tool' ? 'flex' : 'none';
+    if ($('setupJog')) $('setupJog').style.display = sub === 'jog' ? 'flex' : 'none';
+  });
+});
+
+document.querySelectorAll('.dro-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dro-tab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    droMode = btn.dataset.dro;
+    refreshUI();
+  });
+});
+
+document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
+  row.addEventListener('click', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+    document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
+    row.classList.add('active-row');
+    activeWcs = row.dataset.wcs;
+    updateActiveCodes();
+  });
+  row.querySelectorAll('input').forEach((inp) => {
+    inp.addEventListener('change', () => {
+      wcsTable[row.dataset.wcs][inp.dataset.axis] = parseFloat(inp.value) || 0;
+    });
+  });
+  const zeroBtn = row.querySelector('.btn-set-zero');
+  if (zeroBtn) {
+    zeroBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wcs = row.dataset.wcs;
+      wcsTable[wcs] = { x: machine.x, y: machine.y, z: machine.z };
+      row.querySelectorAll('input').forEach((inp) => {
+        inp.value = wcsTable[wcs][inp.dataset.axis].toFixed(3);
+      });
+      document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
+      row.classList.add('active-row');
+      activeWcs = wcs;
+      updateActiveCodes();
+      markTrain('partzero');
+    });
+  }
+});
+
+if ($('btnApplyWcs')) {
+  $('btnApplyWcs').addEventListener('click', () => {
+    // read inputs into table first
+    document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
+      const wcs = row.dataset.wcs;
+      if (!wcsTable[wcs]) return;
+      row.querySelectorAll('input').forEach((inp) => {
+        const ax = inp.dataset.axis;
+        if (ax) wcsTable[wcs][ax] = parseFloat(inp.value) || 0;
+      });
+    });
+    const o = wcsTable[activeWcs] || { x: 0, y: 0, z: 0 };
+    machine.g54 = { x: o.x, y: o.y, z: o.z };
+    machine.activeWcs = activeWcs;
+    savePersistedOffsets();
+    markTrain('partzero');
+    if ($('sbMsg')) $('sbMsg').textContent = activeWcs + ' applied & saved — MACHINE = WORK + offset';
+    refreshUI();
+  });
+}
+
+document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+  row.addEventListener('click', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
+    row.classList.add('active-row');
+    activeTool = +row.dataset.tool;
+  });
+  row.querySelectorAll('input').forEach((inp) => {
+    inp.addEventListener('change', () => {
+      toolTable[+row.dataset.tool][inp.dataset.field] = parseFloat(inp.value) || 0;
+    });
+  });
+});
+
+if ($('btnApplyTool')) {
+  $('btnApplyTool').addEventListener('click', () => {
+    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+      const tn = row.dataset.tool;
+      if (!toolTable[tn]) return;
+      row.querySelectorAll('input').forEach((inp) => {
+        if (inp.dataset.field === 'length') toolTable[tn].length = parseFloat(inp.value) || 0;
+        if (inp.dataset.field === 'dia') toolTable[tn].dia = parseFloat(inp.value) || toolTable[tn].dia;
+      });
+    });
+    applyToolFromTable(activeTool);
+    savePersistedOffsets();
+    markTrain('toollength');
+    if ($('sbMsg')) $('sbMsg').textContent = 'Tool T' + activeTool + ' Ø' + toolTable[activeTool].dia + ' applied & saved';
+    refreshUI();
+  });
+}
+
+document.querySelectorAll('.jog-inc').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.jog-inc').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    jogInc = parseFloat(btn.dataset.inc);
+  });
+});
+document.querySelectorAll('.jog-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    jogAxis(btn.dataset.axis, parseFloat(btn.dataset.dir));
+  });
+});
+if ($('btnJogHome')) {
+  $('btnJogHome').addEventListener('click', () => {
+    machine.x = 0; machine.y = 0; machine.z = 50;
+    refreshUI();
+  });
+}
+
+document.querySelectorAll('.sk').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const sk = btn.dataset.sk;
+    if (sk === 'f1') {
+      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+      document.querySelectorAll('.subtab').forEach((b) => {
+        b.classList.toggle('active', b.dataset.sub === 'work');
+      });
+      if ($('setupWork')) $('setupWork').style.display = 'flex';
+      if ($('setupTool')) $('setupTool').style.display = 'none';
+      if ($('setupJog')) $('setupJog').style.display = 'none';
+      if ($('sbMsg')) $('sbMsg').textContent = 'OFFSET — Work Coordinate System';
+    } else if (sk === 'f2') {
+      if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — Active Codes';
+    } else if (sk === 'f3') {
+      showAlarmPanel();
+      if ($('sbMsg')) $('sbMsg').textContent = alarmHistory.length
+        ? ('ALARM — ' + alarmHistory.length + ' pesan')
+        : 'ALARM — NO ALARMS';
+    } else if (sk === 'f4') {
+      setGraphVisible(!graphVisible);
+    } else if (sk === 'f5') {
+      openTraining();
+    } else if (sk === 'f6') {
+      btn.classList.toggle('active');
+      const on = btn.classList.contains('active');
+      const lbl = $('sk6');
+      if (lbl) lbl.textContent = on ? 'CLNT ON' : 'COOLANT';
+      if ($('sbMsg')) $('sbMsg').textContent = on ? 'COOLANT ON' : 'COOLANT OFF';
+    } else if (sk === 'f7') {
+      const c = $('chkSingleBlock');
+      if (c) {
+        c.checked = !c.checked;
+        c.dispatchEvent(new Event('change'));
+      }
+    } else if (sk === 'f8') {
+      applyDryRun(!sim.dryRun);
+    }
+  });
+});
+
+if ($('btnTrainClose')) $('btnTrainClose').addEventListener('click', closeTraining);
+if ($('trainOverlay')) {
+  $('trainOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'trainOverlay') closeTraining();
+  });
+}
+if ($('btnTrainReset')) $('btnTrainReset').addEventListener('click', resetTraining);
+if ($('btnTrainStart')) {
+  $('btnTrainStart').addEventListener('click', () => {
+    closeTraining();
+    document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+  });
+}
+document.querySelectorAll('.train-goto').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const g = btn.dataset.goto;
+    if (g === 'partzero') {
+      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+      document.querySelector('.subtab[data-sub="work"]')?.click();
+    } else if (g === 'toollength') {
+      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+      document.querySelector('.subtab[data-sub="tool"]')?.click();
+    } else if (g === 'dryrun') {
+      applyDryRun(true);
+      document.querySelector('.mode-tab[data-mode="operation"]')?.click();
+    } else if (g === 'cyclestart') {
+      applyDryRun(false);
+      document.querySelector('.mode-tab[data-mode="operation"]')?.click();
+    }
+  });
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (sim.playing) sim.pause();
+    else {
+      if (toolpathGroup) toolpathGroup.visible = false;
+      sim.play();
+    }
+    refreshUI();
+    return;
+  }
+  if (currentMode === 'setup') {
+    const map = {
+      ArrowLeft: ['x', -1], ArrowRight: ['x', 1],
+      ArrowDown: ['y', -1], ArrowUp: ['y', 1],
+      PageDown: ['z', -1], PageUp: ['z', 1]
+    };
+    if (map[e.code]) {
+      e.preventDefault();
+      jogAxis(map[e.code][0], map[e.code][1]);
+    }
+  }
+});
+
+let last = performance.now();
+let trailAcc = 0;
+function animate(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  sim.tick(dt);
+  stock.updateMesh(scene);
+  trailAcc += dt;
+  if (sim.playing && trailAcc > 0.1) {
+    trailAcc = 0;
+    rebuildTrail();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+document.querySelectorAll('.sk[data-sk="f4"]').forEach((b) => b.classList.add('active'));
+if ($('sk4')) $('sk4').textContent = 'GRAPH ON';
+loadPersistedOffsets();
+syncOffsetInputsFromTables();
+if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
+loadProgram();
+requestAnimationFrame(animate);
