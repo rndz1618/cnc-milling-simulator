@@ -1,19 +1,17 @@
-('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
-      row.classList.add('active-row');
-      activeWcs = wcs;
-      updateActiveCodes();
-      markTrain('partzero');
+    document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
+      const wcs = row.dataset.wcs;
+      if (!wcsTable[wcs]) return;
+      row.querySelectorAll('input').forEach((inp) => {
+        const ax = inp.dataset.axis;
+        if (ax) wcsTable[wcs][ax] = parseFloat(inp.value) || 0;
+      });
     });
-  }
-});
-
-if ($('btnApplyWcs')) {
-  $('btnApplyWcs').addEventListener('click', () => {
     const o = wcsTable[activeWcs] || { x: 0, y: 0, z: 0 };
     machine.g54 = { x: o.x, y: o.y, z: o.z };
     machine.activeWcs = activeWcs;
+    savePersistedOffsets();
     markTrain('partzero');
-    if ($('sbMsg')) $('sbMsg').textContent = activeWcs + ' applied — MACHINE = WORK + offset';
+    if ($('sbMsg')) $('sbMsg').textContent = activeWcs + ' applied & saved — MACHINE = WORK + offset';
     refreshUI();
   });
 }
@@ -34,14 +32,18 @@ document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
 
 if ($('btnApplyTool')) {
   $('btnApplyTool').addEventListener('click', () => {
-    const t = toolTable[activeTool];
-    machine.tool = activeTool;
-    machine.toolLength = t.length;
-    machine.toolDiameter = t.dia;
-    setToolDiameter(toolMesh, t.dia);
-    lastToolDia = t.dia;
+    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+      const tn = row.dataset.tool;
+      if (!toolTable[tn]) return;
+      row.querySelectorAll('input').forEach((inp) => {
+        if (inp.dataset.field === 'length') toolTable[tn].length = parseFloat(inp.value) || 0;
+        if (inp.dataset.field === 'dia') toolTable[tn].dia = parseFloat(inp.value) || toolTable[tn].dia;
+      });
+    });
+    applyToolFromTable(activeTool);
+    savePersistedOffsets();
     markTrain('toollength');
-    if ($('sbMsg')) $('sbMsg').textContent = 'Tool T' + activeTool + ' Ø' + t.dia + ' applied';
+    if ($('sbMsg')) $('sbMsg').textContent = 'Tool T' + activeTool + ' Ø' + toolTable[activeTool].dia + ' applied & saved';
     refreshUI();
   });
 }
@@ -78,8 +80,3 @@ document.querySelectorAll('.sk').forEach((btn) => {
       if ($('setupJog')) $('setupJog').style.display = 'none';
       if ($('sbMsg')) $('sbMsg').textContent = 'OFFSET — Work Coordinate System';
     } else if (sk === 'f2') {
-      if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — Active Codes';
-    } else if (sk === 'f3') {
-      if ($('sbAlarm')) {
-        $('sbAlarm').textContent = 'NO ALARMS';
-        $('sbAlarm')
