@@ -1,22 +1,28 @@
-// v0.7.0-rA3 Fix — load known-good main from pinned commit (trail + F4/F8)
-// Parser G2/G3 is already on branch main (1e42ef77)
+// v0.7.0-rA3 Fix2 — decompress pinned main, import live modules (G2/G3 + trail)
 const PIN = '80f2af7358b1acb900c4a91208a8c9d17c4e8cd2';
-const base = `https://cdn.jsdelivr.net/gh/rndz1618/cnc-milling-simulator@${PIN}/src/`;
+const pinBase = `https://cdn.jsdelivr.net/gh/rndz1618/cnc-milling-simulator@${PIN}/src/`;
 
 async function boot() {
-  // Fetch the split loader parts from the pinned good commit
-  const a = await (await fetch(base + 'main_part_a.txt')).text();
-  const b = await (await fetch(base + 'main_part_b.txt')).text();
-  let code = a + b;
-  // Rewrite relative imports to absolute (same base as loader)
-  // The decompressed main uses ./stock/ etc — rewrite after inflate
-  // Actually the pinned loader already does relative→absolute + three CDN.
-  // Just eval the loader itself by rewriting its own relative fetches:
-  // The loader fetches ./main_part_*.txt — we already inlined them.
-  // So execute the combined loader code, but skip its fetch of parts.
-  // Simpler: the combined a+b IS the compressed boot. Run it.
-  // But boot() inside looks for import.meta.url relative to itself.
-  // Force import.meta via blob URL under our origin so relative rewrite works for modules.
+  const a = await (await fetch(pinBase + 'main_part_a.txt')).text();
+  const b = await (await fetch(pinBase + 'main_part_b.txt')).text();
+  const loaderSrc = a + b;
+
+  // Extract B64 from the compressed loader
+  const m = loaderSrc.match(/const B64 = "([^"]+)"/);
+  if (!m) throw new Error('B64 not found in pinned loader');
+  const bin = Uint8Array.from(atob(m[1]), c => c.charCodeAt(0));
+  const ds = new DecompressionStream('deflate');
+  const stream = new Blob([bin]).stream().pipeThrough(ds);
+  let code = await new Response(stream).text();
+
+  // Rewrite relative imports to THIS deployment's src/ (live Parser has G2/G3)
+  const liveBase = new URL('.', import.meta.url).href;
+  code = code.replace(/from\s+['"](\.[^'"]+)['"]/g, (_, rel) => {
+    return "from '" + new URL(rel, liveBase).href + "'";
+  });
+  code = code.replace(/from\s+['"]three['"]/g,
+    "from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js'");
+
   const blob = new Blob([code], { type: 'text/javascript' });
   await import(URL.createObjectURL(blob));
 }
