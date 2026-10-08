@@ -1,0 +1,85 @@
+('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
+      row.classList.add('active-row');
+      activeWcs = wcs;
+      updateActiveCodes();
+      markTrain('partzero');
+    });
+  }
+});
+
+if ($('btnApplyWcs')) {
+  $('btnApplyWcs').addEventListener('click', () => {
+    const o = wcsTable[activeWcs] || { x: 0, y: 0, z: 0 };
+    machine.g54 = { x: o.x, y: o.y, z: o.z };
+    machine.activeWcs = activeWcs;
+    markTrain('partzero');
+    if ($('sbMsg')) $('sbMsg').textContent = activeWcs + ' applied — MACHINE = WORK + offset';
+    refreshUI();
+  });
+}
+
+document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
+  row.addEventListener('click', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    document.querySelectorAll('#toolOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
+    row.classList.add('active-row');
+    activeTool = +row.dataset.tool;
+  });
+  row.querySelectorAll('input').forEach((inp) => {
+    inp.addEventListener('change', () => {
+      toolTable[+row.dataset.tool][inp.dataset.field] = parseFloat(inp.value) || 0;
+    });
+  });
+});
+
+if ($('btnApplyTool')) {
+  $('btnApplyTool').addEventListener('click', () => {
+    const t = toolTable[activeTool];
+    machine.tool = activeTool;
+    machine.toolLength = t.length;
+    machine.toolDiameter = t.dia;
+    setToolDiameter(toolMesh, t.dia);
+    lastToolDia = t.dia;
+    markTrain('toollength');
+    if ($('sbMsg')) $('sbMsg').textContent = 'Tool T' + activeTool + ' Ø' + t.dia + ' applied';
+    refreshUI();
+  });
+}
+
+document.querySelectorAll('.jog-inc').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.jog-inc').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    jogInc = parseFloat(btn.dataset.inc);
+  });
+});
+document.querySelectorAll('.jog-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    jogAxis(btn.dataset.axis, parseFloat(btn.dataset.dir));
+  });
+});
+if ($('btnJogHome')) {
+  $('btnJogHome').addEventListener('click', () => {
+    machine.x = 0; machine.y = 0; machine.z = 50;
+    refreshUI();
+  });
+}
+
+document.querySelectorAll('.sk').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const sk = btn.dataset.sk;
+    if (sk === 'f1') {
+      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+      document.querySelectorAll('.subtab').forEach((b) => {
+        b.classList.toggle('active', b.dataset.sub === 'work');
+      });
+      if ($('setupWork')) $('setupWork').style.display = 'flex';
+      if ($('setupTool')) $('setupTool').style.display = 'none';
+      if ($('setupJog')) $('setupJog').style.display = 'none';
+      if ($('sbMsg')) $('sbMsg').textContent = 'OFFSET — Work Coordinate System';
+    } else if (sk === 'f2') {
+      if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — Active Codes';
+    } else if (sk === 'f3') {
+      if ($('sbAlarm')) {
+        $('sbAlarm').textContent = 'NO ALARMS';
+        $('sbAlarm')

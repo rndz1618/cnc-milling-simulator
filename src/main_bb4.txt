@@ -1,0 +1,8 @@
+questAnimationFrame(animate);
+}
+
+document.querySelectorAll('.sk[data-sk="f4"]').forEach((b) => b.classList.add('active'));
+if ($('sk4')) $('sk4').textContent = 'GRAPH ON';
+if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
+loadProgram();
+requestAnimationFrame(animate);

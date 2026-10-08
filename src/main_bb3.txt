@@ -1,0 +1,97 @@
+.className = 'sb-item ok';
+      }
+      if ($('sbMsg')) $('sbMsg').textContent = 'ALARM — history kosong';
+    } else if (sk === 'f4') {
+      setGraphVisible(!graphVisible);
+    } else if (sk === 'f5') {
+      openTraining();
+    } else if (sk === 'f6') {
+      btn.classList.toggle('active');
+      const on = btn.classList.contains('active');
+      const lbl = $('sk6');
+      if (lbl) lbl.textContent = on ? 'CLNT ON' : 'COOLANT';
+      if ($('sbMsg')) $('sbMsg').textContent = on ? 'COOLANT ON' : 'COOLANT OFF';
+    } else if (sk === 'f7') {
+      const c = $('chkSingleBlock');
+      if (c) {
+        c.checked = !c.checked;
+        c.dispatchEvent(new Event('change'));
+      }
+    } else if (sk === 'f8') {
+      applyDryRun(!sim.dryRun);
+    }
+  });
+});
+
+if ($('btnTrainClose')) $('btnTrainClose').addEventListener('click', closeTraining);
+if ($('trainOverlay')) {
+  $('trainOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'trainOverlay') closeTraining();
+  });
+}
+if ($('btnTrainReset')) $('btnTrainReset').addEventListener('click', resetTraining);
+if ($('btnTrainStart')) {
+  $('btnTrainStart').addEventListener('click', () => {
+    closeTraining();
+    document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+  });
+}
+document.querySelectorAll('.train-goto').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const g = btn.dataset.goto;
+    if (g === 'partzero') {
+      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+      document.querySelector('.subtab[data-sub="work"]')?.click();
+    } else if (g === 'toollength') {
+      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+      document.querySelector('.subtab[data-sub="tool"]')?.click();
+    } else if (g === 'dryrun') {
+      applyDryRun(true);
+      document.querySelector('.mode-tab[data-mode="operation"]')?.click();
+    } else if (g === 'cyclestart') {
+      applyDryRun(false);
+      document.querySelector('.mode-tab[data-mode="operation"]')?.click();
+    }
+  });
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (sim.playing) sim.pause();
+    else {
+      if (toolpathGroup) toolpathGroup.visible = false;
+      sim.play();
+    }
+    refreshUI();
+    return;
+  }
+  if (currentMode === 'setup') {
+    const map = {
+      ArrowLeft: ['x', -1], ArrowRight: ['x', 1],
+      ArrowDown: ['y', -1], ArrowUp: ['y', 1],
+      PageDown: ['z', -1], PageUp: ['z', 1]
+    };
+    if (map[e.code]) {
+      e.preventDefault();
+      jogAxis(map[e.code][0], map[e.code][1]);
+    }
+  }
+});
+
+let last = performance.now();
+let trailAcc = 0;
+function animate(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  sim.tick(dt);
+  stock.updateMesh(scene);
+  trailAcc += dt;
+  if (sim.playing && trailAcc > 0.1) {
+    trailAcc = 0;
+    rebuildTrail();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  re
