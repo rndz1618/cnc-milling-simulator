@@ -2,7 +2,7 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
-commit: (diisi saat commit gelombang)
+commit: e4b0ccb
 status: v0.9.3 — fix CURNT CMDS live; Tahap 5: DRO 4 mode, tab MDI, CURNT CMDS (F2), controller profile JSON
 verify: test 41/41 · build OK · smoke browser OK (cek CURNT CMDS terbuka + live update saat run)
 ## Sedang berjalan
