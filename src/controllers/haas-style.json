@@ -1,0 +1,62 @@
+{
+  "name": "haas-style",
+  "droModes": ["work", "machine", "operator", "dtg"],
+  "panels": {
+    "program": {
+      "id": "panelProgram",
+      "title": "Program"
+    },
+    "setup": {
+      "id": "panelSetup",
+      "subtabs": [
+        { "id": "work", "label": "WORK" },
+        { "id": "tool", "label": "TOOL" },
+        { "id": "jog", "label": "JOG" },
+        { "id": "stock", "label": "STOCK" }
+      ]
+    }
+  },
+  "softkeys": [
+    {
+      "f": 1,
+      "label": "OFFSET",
+      "action": "open-offset"
+    },
+    {
+      "f": 2,
+      "label": "CURNT CMDS",
+      "action": "current-cmds"
+    },
+    {
+      "f": 3,
+      "label": "ALARM",
+      "action": "alarm"
+    },
+    {
+      "f": 4,
+      "label": "GRAPH",
+      "action": "graph"
+    },
+    {
+      "f": 5,
+      "label": "TRAINING",
+      "action": "training"
+    },
+    {
+      "f": 6,
+      "label": "COOLANT",
+      "action": "coolant"
+    },
+    {
+      "f": 7,
+      "label": "SINGLE BLK",
+      "action": "single-block"
+    },
+    {
+      "f": 8,
+      "label": "DRY RUN",
+      "action": "dry-run"
+    }
+  ],
+  "keypad": {}
+}

@@ -114,7 +114,7 @@ let trailGroup = null;
 let graphVisible = true;
 let allMoves = [];        // entri parser (work coords + tag)
 let machineMoves = [];    // entri + target machine (untuk preview/trail/fit)
-
+let currentController = 'haas-style';
 const LS_WCS = 'cnc-sim-wcs';
 const LS_TOOLS = 'cnc-sim-tools';
 
@@ -518,6 +518,17 @@ function refreshUI() {
     if ($('droX')) $('droX').textContent = fmt(mc.x);
     if ($('droY')) $('droY').textContent = fmt(mc.y);
     if ($('droZ')) $('droZ').textContent = fmt(mc.z);
+  } else if (droMode === 'operator') {
+    // OPERATOR — mirror work untuk sekarang; bisa disetel relatif
+    const wc = workCoords(machine);
+    if ($('droX')) $('droX').textContent = fmt(wc.x);
+    if ($('droY')) $('droY').textContent = fmt(wc.y);
+    if ($('droZ')) $('droZ').textContent = fmt(wc.z);
+  } else if (droMode === 'dtg') {
+    const d = machine.dtg || { x: 0, y: 0, z: 0 };
+    if ($('droX')) $('droX').textContent = fmt(d.x);
+    if ($('droY')) $('droY').textContent = fmt(d.y);
+    if ($('droZ')) $('droZ').textContent = fmt(d.z);
   } else {
     const wc = workCoords(machine);
     if ($('droX')) $('droX').textContent = fmt(wc.x);
@@ -794,12 +805,23 @@ document.querySelectorAll('.mode-tab').forEach((btn) => {
     if ($('simMode')) $('simMode').textContent = currentMode.toUpperCase();
     const prog = $('panelProgram');
     const setup = $('panelSetup');
+    const mdi = $('mdiWrap');
+    const gwrap = document.querySelector('.gcode-wrap');
+    const leftActions = document.querySelector('.left-actions');
     if (currentMode === 'setup') {
       if (prog) prog.style.display = 'none';
       if (setup) setup.style.display = 'flex';
     } else {
       if (prog) prog.style.display = 'flex';
       if (setup) setup.style.display = 'none';
+      if (mdi) mdi.style.display = (currentMode === 'mdi') ? 'flex' : 'none';
+      if (gwrap) gwrap.style.display = (currentMode === 'mdi') ? 'none' : 'block';
+      const la = leftActions;
+      if (la) {
+        la.querySelectorAll('button, label').forEach((el) => {
+          el.style.display = (currentMode === 'mdi') ? 'none' : '';
+        });
+      }
     }
     updateStatusBar();
   });
@@ -822,7 +844,10 @@ document.querySelectorAll('.dro-tab').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.dro-tab').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
-    droMode = btn.dataset.dro;
+    const mode = btn.dataset.dro;
+    if (mode === 'work' || mode === 'machine' || mode === 'operator' || mode === 'dtg') {
+      droMode = mode;
+    }
     refreshUI();
   });
 });
@@ -1116,3 +1141,27 @@ applyStockSetup(true);
 if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
 loadProgram();
 requestAnimationFrame(animate);
+
+// MDI handlers
+if ($('btnMdiRun')) {
+  $('btnMdiRun').addEventListener('click', () => {
+    const val = $('mdiInput')?.value || '';
+    if (!val.trim()) return;
+    if (sim.state === 'alarm') {
+      sim.stop();
+    }
+    const p = parseGCode(val);
+    allMoves = p.moves;
+    machineMoves = allMoves.map((e) => {
+      const t = moveTarget(e, machine);
+      return Object.assign({}, e, { mx: t.x, my: t.y, mz: t.z });
+    });
+    sim.loadMoves(allMoves, 0);
+    sim.play();
+  });
+}
+if ($('btnMdiClear')) {
+  $('btnMdiClear').addEventListener('click', () => {
+    if ($('mdiInput')) $('mdiInput').value = '';
+  });
+}

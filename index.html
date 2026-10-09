@@ -22,6 +22,7 @@
       <div class="mode-tabs">
         <button class="mode-tab" data-mode="setup">SETUP</button>
         <button class="mode-tab active" data-mode="edit">EDIT</button>
+        <button class="mode-tab" data-mode="mdi">MDI</button>
         <button class="mode-tab" data-mode="operation">OPERATION</button>
       </div>
     </div>
@@ -40,6 +41,14 @@
           <span id="lineCount">0 gerakan</span>
         </div>
         <div id="lineInfo">Baris aktif: —</div>
+        <div id="mdiWrap" style="display:none;flex-direction:column;gap:6px;margin-bottom:6px">
+          <div class="panel-h"><span>MDI</span></div>
+          <textarea id="mdiInput" spellcheck="false" placeholder="Ketik satu baris/blok G-code, lalu Cycle Start"></textarea>
+          <div class="left-actions">
+            <button class="btn btn-primary" id="btnMdiRun">Run MDI</button>
+            <button class="btn" id="btnMdiClear">Clear</button>
+          </div>
+        </div>
         <div class="gcode-wrap">
           <textarea id="gcodeInput" spellcheck="false"></textarea>
           <div id="gcodeLines"></div>
@@ -237,6 +246,8 @@
           <span class="dro-tabs">
             <button class="dro-tab active" data-dro="work">WORK</button>
             <button class="dro-tab" data-dro="machine">MACHINE</button>
+            <button class="dro-tab" data-dro="operator">OPERATOR</button>
+            <button class="dro-tab" data-dro="dtg">DTG</button>
           </span>
         </div>
         <div class="dro-row"><div class="dro-axis x">X</div><div class="dro-val" id="droX">0.000</div></div>
