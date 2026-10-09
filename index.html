@@ -123,6 +123,7 @@
           </table>
           <div class="setup-actions">
             <button class="btn btn-primary" id="btnApplyWcs">Apply Active WCS</button>
+            <button class="btn" id="btnResetWcs" title="Kembalikan semua offset WCS ke default">Reset Default</button>
           </div>
         </div>
 
@@ -357,7 +358,7 @@
             <span class="train-check">☐</span>
             <div class="train-step-body">
               <strong>1. Part Zero (G54)</strong>
-              <span class="train-desc">SETUP → WORK → set G54 (ZERO di sudut part) → Apply Active WCS</span>
+              <span class="train-desc">SETUP → JOG: dekatkan tool ke part → SETUP → WORK → pilih G54 → ZERO (touch-off) → Apply Active WCS. Jangan ZERO saat tool masih di home!</span>
               <button class="btn btn-sm btn-primary train-goto" data-goto="partzero">Buka WORK</button>
             </div>
           </li>

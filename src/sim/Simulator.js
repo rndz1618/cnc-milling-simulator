@@ -7,7 +7,7 @@
  * Alarm (kode tak dikenal, soft limit, G00 nabrak material, H offset belum
  * di-set) MENGHENKAN eksekusi — lanjut hanya setelah RESET.
  */
-import { moveTarget, outOfTravel, MACHINE_PROFILE } from '../machine/MachineState.js';
+import { moveTarget, outOfTravel, MACHINE_PROFILE, wcsOffset } from '../machine/MachineState.js';
 
 export class Simulator {
   constructor({
@@ -185,7 +185,7 @@ export class Simulator {
     const target = moveTarget(m, this.machine);
     const bad = outOfTravel(target);
     if (bad.length) {
-      this.alarm('SOFT LIMIT ' + bad.join('/') + ' — TARGET DI LUAR TRAVEL MESIN', m.line);
+      this.alarm(this._softLimitMsg(target, bad, m), m.line);
       return;
     }
     const prev = { x: this.machine.x, y: this.machine.y, z: this.machine.z };
@@ -223,7 +223,7 @@ export class Simulator {
     const target = moveTarget(m, this.machine);
     const bad = outOfTravel(target);
     if (bad.length) {
-      this.alarm('SOFT LIMIT ' + bad.join('/') + ' — TARGET DI LUAR TRAVEL MESIN', m.line);
+      this.alarm(this._softLimitMsg(target, bad, m), m.line);
       return;
     }
 
@@ -284,6 +284,20 @@ export class Simulator {
       }
     }
     this.onUpdate();
+  }
+
+  /** Pesan soft limit yang bisa didiagnosis operator: nilai target, batas, dan offset WCS. */
+  _softLimitMsg(target, bad, m) {
+    const t = MACHINE_PROFILE.travel;
+    const wcs = m.wcs || this.machine.activeWcs;
+    const detail = bad.map((a) => {
+      const ax = a.toLowerCase();
+      return a + '=' + target[ax].toFixed(1) + ' (batas ' + t[ax][0] + '..' + t[ax][1] + ')';
+    }).join(', ');
+    const off = wcsOffset(this.machine, wcs);
+    return 'SOFT LIMIT ' + bad.join('/') + ' — TARGET MELEBIHI TRAVEL MESIN: ' + detail +
+      ' | offset ' + wcs + ' X' + off.x.toFixed(1) + ' Y' + off.y.toFixed(1) + ' Z' + off.z.toFixed(1) +
+      ' — cek OFFSET (F1) → WORK, atau Reset Default';
   }
 
   _setPos(t) {

@@ -867,10 +867,31 @@ document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
       updateActiveCodes();
       refreshUI();
       markTrain('partzero');
-      if ($('sbMsg')) $('sbMsg').textContent = wcs + ' ZERO di posisi mesin kini — offset disimpan';
+      if (Math.abs(machine.wcs[wcs].z) > 50) {
+        if ($('sbMsg')) $('sbMsg').textContent = 'PERINGATAN: offset Z ' + wcs + ' besar (' +
+          machine.wcs[wcs].z.toFixed(1) + ') — program dengan Z positif bisa SOFT LIMIT. Jog dekat part dulu, lalu touch-off ulang.';
+      } else {
+        if ($('sbMsg')) $('sbMsg').textContent = wcs + ' ZERO di posisi mesin kini — offset disimpan';
+      }
     });
   }
 });
+
+if ($('btnResetWcs')) {
+  $('btnResetWcs').addEventListener('click', () => {
+    for (const w of WCS_NAMES) machine.wcs[w] = { x: 0, y: 0, z: 0 };
+    machine.wcs.G55 = { x: 0, y: -90, z: 0 };
+    savePersistedOffsets();
+    syncOffsetInputsFromTables();
+    computeMachineMoves();
+    rebuildPreview();
+    rebuildWcsMarkers();
+    if (sim.state === 'alarm' || sim.state === 'hold') sim.stop();
+    clearAlarms();
+    refreshUI();
+    if ($('sbMsg')) $('sbMsg').textContent = 'WCS direset ke default (G54 0,0,0 · G55 0,−90,0) — siap Cycle Start';
+  });
+}
 
 if ($('btnApplyWcs')) {
   $('btnApplyWcs').addEventListener('click', () => {

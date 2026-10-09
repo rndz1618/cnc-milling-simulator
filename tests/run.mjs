@@ -191,6 +191,32 @@ eq(tgt53.z, -5, 'G53 Z-5: target koordinat mesin langsung');
 ok(outOfTravel({ x: 999, y: 0, z: 0 }).includes('X'), 'Soft limit: X di luar travel');
 ok(outOfTravel({ x: 0, y: 0, z: 0 }).length === 0, 'Soft limit: origin aman');
 
+// ---------- Simulator: soft limit G54.z=150 (skenario touch-off di home) ----------
+const { Simulator } = await import('../src/sim/Simulator.js');
+const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+{
+  const machine = createMachineState();
+  machine.wcs.G54 = { x: 0, y: 0, z: 150 };
+  const stock = new VoxelStock({ sizeX: 100, sizeY: 100, sizeZ: 20, res: 2, originX: 0, originY: 0, originZ: -20 });
+  stock.updateMesh({ add() {}, remove() {}, traverse() {} }, true);
+  const alarms = [];
+  const sim = new Simulator({
+    stock, machine,
+    onUpdate() {}, onLine() {}, onMessage() {},
+    onAlarm: (m) => alarms.push(m),
+    onTool() {}, onToolComp() {}, onCoolant() {}
+  });
+  const p = parseGCode('G0 Z50\nM30');
+  sim.loadMoves(p.moves, 0);
+  sim.play();
+  let guard = 0;
+  while (sim.playing && guard++ < 10000) sim.tick(0.05);
+  ok(sim.state === 'alarm', 'Sim: G54.z=150 + G0 Z50 → alarm soft limit');
+  const msg = alarms[0] || '';
+  ok(msg.includes('SOFT LIMIT Z') && msg.includes('200.0') && msg.includes('G54'),
+    'Sim: pesan soft limit memuat target Z200 dan offset G54 → "' + msg.slice(0, 90) + '…"');
+}
+
 // ---------- Arc G2 (regresi dari SAMPLE) ----------
 const arc = parseGCode('G0 X10 Y10\nG2 X20 Y20 I10 J0 F100\nM30');
 ok(arc.moves.filter((m) => m.type === 'feed').length >= 8, 'G2 IJ: arc di-expand jadi ≥8 segmen');
