@@ -18,7 +18,10 @@ npm install
 npm run dev      # dev server (Vite)
 npm run build    # production build → dist/
 npm run preview  # serve the production build
-npm test         # parser/interpreter unit tests (golden file: O20018)
+npm test         # unit test 38 kasus (golden file: O20018)
+```
+
+Rencana pengembangan berikutnya: lihat [docs/PLAN-LANJUTAN.md](docs/PLAN-LANJUTAN.md).
 ```
 
 Tanpa Node, tetap bisa jalan sebagai static site (three.js via CDN importmap):
