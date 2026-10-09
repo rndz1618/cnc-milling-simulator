@@ -2,7 +2,7 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
-commit: b90f07c
+commit: a2a1bbd
 status: v0.9.2 — Tahap 5: DRO 4 mode, tab MDI, CURNT CMDS (F2) sebagai halaman, controller profile JSON
 verify: test 38/38 · build OK · smoke browser OK (termasuk cek halaman CURNT CMDS)
 ## Sedang berjalan
