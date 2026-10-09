@@ -1165,3 +1165,21 @@ if ($('btnMdiClear')) {
     if ($('mdiInput')) $('mdiInput').value = '';
   });
 }
+
+// Load controller profile (data-driven panel)
+async function loadControllerProfile() {
+  try {
+    const res = await fetch('./src/controllers/haas-style.json');
+    const cfg = await res.json();
+    // Apply softkey labels if present
+    if (cfg.softkeyLabels) {
+      for (let i = 1; i <= 8; i++) {
+        const el = $('sk' + i);
+        if (el && cfg.softkeyLabels[i]) el.textContent = cfg.softkeyLabels[i];
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+loadControllerProfile();

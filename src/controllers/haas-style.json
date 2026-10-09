@@ -1,6 +1,11 @@
 {
   "name": "haas-style",
-  "droModes": ["work", "machine", "operator", "dtg"],
+  "droModes": [
+    "work",
+    "machine",
+    "operator",
+    "dtg"
+  ],
   "panels": {
     "program": {
       "id": "panelProgram",
@@ -9,10 +14,22 @@
     "setup": {
       "id": "panelSetup",
       "subtabs": [
-        { "id": "work", "label": "WORK" },
-        { "id": "tool", "label": "TOOL" },
-        { "id": "jog", "label": "JOG" },
-        { "id": "stock", "label": "STOCK" }
+        {
+          "id": "work",
+          "label": "WORK"
+        },
+        {
+          "id": "tool",
+          "label": "TOOL"
+        },
+        {
+          "id": "jog",
+          "label": "JOG"
+        },
+        {
+          "id": "stock",
+          "label": "STOCK"
+        }
       ]
     }
   },
@@ -58,5 +75,15 @@
       "action": "dry-run"
     }
   ],
-  "keypad": {}
+  "keypad": {},
+  "softkeyLabels": {
+    "1": "OFFSET",
+    "2": "CURNT CMDS",
+    "3": "ALARM",
+    "4": "GRAPH",
+    "5": "TRAINING",
+    "6": "COOLANT",
+    "7": "SINGLE BLK",
+    "8": "DRY RUN"
+  }
 }
