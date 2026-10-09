@@ -4,6 +4,7 @@
  */
 import { parseGCode } from '../src/machine/Parser.js';
 import { createMachineState, moveTarget, workCoords, outOfTravel } from '../src/machine/MachineState.js';
+import { normalizeProfile } from '../src/controllers/Panel.js';
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -229,6 +230,19 @@ const arc = parseGCode('G0 X10 Y10\nG2 X20 Y20 I10 J0 F100\nM30');
 ok(arc.moves.filter((m) => m.type === 'feed').length >= 8, 'G2 IJ: arc di-expand jadi ≥8 segmen');
 const lastArc = arc.moves[arc.moves.length - 2];
 eq([lastArc.x, lastArc.y], [20, 20], 'G2: titik akhir arc tepat (20,20)');
+
+// ---------- Controller profile: normalizeProfile ----------
+eq(normalizeProfile(null).modes.length, 5, 'normalize: null → 5 mode default');
+eq(normalizeProfile(null).default, 'mem', 'normalize: null → default mem');
+eq(normalizeProfile({ modes: [] }).modes.length, 5, 'normalize: modes kosong → 5 default');
+const sk = normalizeProfile({ softkeys: [
+  { f: 12, label: 'X' }, { f: 1, label: 'A' }, { f: 1, label: 'B' }
+]}).softkeys;
+eq(sk.find((s) => s.f === 8)?.label, 'X', 'normalize: f=12 di-clamp ke 8');
+eq(sk.filter((s) => s.f === 1).length, 1, 'normalize: f duplikat di-dedupe');
+eq(sk.find((s) => s.f === 1)?.label, 'A', 'normalize: dedupe → entri pertama menang');
+eq(normalizeProfile({ modes: [{ id: 'foo' }], default: 'bar' }).default, 'foo', 'normalize: default tak valid → mode pertama');
+ok(normalizeProfile({ softkeys: [{ f: 2, label: 'Z', action: 'nope' }] }).softkeys[0].action === 'nope', 'normalize: action tak dikenal aman');
 
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
