@@ -65,7 +65,12 @@ export function createScene(container) {
   scene.add(grid);
 
   // Marker origin mesin (kecil, abu) — beda dengan work zero G54 (hijau).
-  const machineOrigin = new THREE.AxesHelper(12);
+  const machineOrigin = new THREE.Group();
+  const mAxes = new THREE.AxesHelper(12);
+  machineOrigin.add(mAxes);
+  const mLabel = makeTextSprite('ORIGIN MESIN', '#ffab40', 16);
+  mLabel.position.set(0, 10, 0);
+  machineOrigin.add(mLabel);
   machineOrigin.position.set(0, -64.5, 0);
   scene.add(machineOrigin);
 
@@ -174,8 +179,33 @@ export function setToolPosition(toolMesh, mx, my, mz) {
   toolMesh.position.set(mx, mz, my);
 }
 
+/** Sprite label teks (canvas) — selalu terlihat walau tertutup geometri. */
+export function makeTextSprite(text, color = '#3fb950', scale = 12) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(10,16,24,0.78)';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(2, 2, 252, 60);
+  ctx.font = 'bold 38px Consolas, monospace';
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, 34);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthTest: false
+  }));
+  sprite.scale.set(scale, scale * 0.25, 1);
+  return sprite;
+}
+
 /** Marker work zero — diposisikan app pada wcsOffset WCS aktif (ruang mesin). */
-export function createWorkZeroMarker(size = 20) {
+export function createWorkZeroMarker(size = 20, label = 'G54') {
   const g = new THREE.Group();
   g.name = 'workZero';
   const axes = new THREE.AxesHelper(size);
@@ -192,6 +222,9 @@ export function createWorkZeroMarker(size = 20) {
     new THREE.MeshBasicMaterial({ color: 0x3fb950 })
   );
   g.add(dot);
+  const text = makeTextSprite(label, '#3fb950', size * 0.9);
+  text.position.y = size + 3;
+  g.add(text);
   return g;
 }
 

@@ -364,7 +364,7 @@ function rebuildWcsMarkers() {
     const off = machine.wcs[w];
     const active = w === machine.activeWcs;
     if (!active && off.x === 0 && off.y === 0 && off.z === 0 && w !== 'G54') continue;
-    const marker = createWorkZeroMarker(active ? 20 : 9);
+    const marker = createWorkZeroMarker(active ? 20 : 9, w);
     marker.position.set(off.x, off.z, off.y);
     if (!active) marker.scale.setScalar(0.6);
     wcsMarkersGroup.add(marker);
