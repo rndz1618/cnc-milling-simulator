@@ -2,16 +2,16 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
-commit: 25b541c
-status: Tahap 5 awal — DRO 4 mode (WORK/MACHINE/OPERATOR/DTG), tab MDI, controller profile JSON
-verify: test 38/38 · build OK · smoke browser OK
+commit: b90f07c
+status: v0.9.2 — Tahap 5: DRO 4 mode, tab MDI, CURNT CMDS (F2) sebagai halaman, controller profile JSON
+verify: test 38/38 · build OK · smoke browser OK (termasuk cek halaman CURNT CMDS)
 ## Sedang berjalan
-- Tahap 5 (panel data-driven) — perlu melengkapi: panel CURNT CMDS sungguhan, mode EDIT/MEM/MDI/JOG nyata, render panel dari JSON.
+- (tidak ada)
 ## Berikutnya
-1. **Tahap 5 — panel data-driven (lanjutan)**: render softkeys/panel dari src/controllers/haas-style.json, halaman CURNT CMDS, sistem halaman alarm terintegrasi. Target selesai sesuai kriteria docs/PLAN-LANJUTAN.md §4 Tahap 5.
-2. Setelah itu: Tahap 6 (interpreter realism) → 7 (fixture editor) → 8 (removal v2) → 9 (SaaS).
+1. **Tahap 5 lanjutan / Tahap 6**: render seluruh panel (keypad/mode EDIT-MEM-MDI-JOG) dari JSON controller; lalu lanjut Tahap 6 (interpreter realism: G41/G42, G84, dwell nyata, feed hold di tengah blok).
+2. Setelah itu: Tahap 7 (fixture editor) → 8 (removal v2) → 9 (SaaS).
 ## Catatan gelombang terakhir (2026-10-09)
-- DRO 4 mode: OPERATOR & DTG ditambahkan (DTG dihitung Simulator real-time).
-- Tab MDI: input 1 blok + Run MDI bisa dieksekusi langsung (Cycle Start style).
-- Controller profile JSON awal (src/controllers/haas-style.json) sebagai fondasi data-driven.
-- Baseline tetap hijau (38/38). Invarian koordinat mesin terjaga.
+- v0.9.2: halaman CURNT CMDS (F2) menampilkan kode G/M aktif (motion, plane, units, WCS, tool, spindle, coolant, feed); smoke browser mengeceknya.
+- v0.9.1: DRO 4 mode (OPERATOR & DTG), tab MDI (jalankan 1 blok), softkey label dari JSON.
+- Meta: AGENTS.md + scripts/verify.mjs + .github/workflows/ci.yml ikut ter-commit (gerbang verify + aturan handoff).
+- Baseline hijau (38/38). Invarian koordinat mesin terjaga.

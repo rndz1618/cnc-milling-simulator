@@ -250,6 +250,50 @@ function renderAlarmList() {
   ).join('');
 }
 
+// ---------- CURNT CMDS (F2): halaman kode G/M aktif ----------
+function activeCodeList() {
+  const m = machine;
+  const rows = [
+    ['Motion', m.motion || 'G0'],
+    ['Plane', m.plane || 'G17'],
+    ['Units', m.units === 'in' ? 'G20 (inch)' : 'G21 (mm)'],
+    ['WCS', m.activeWcs || 'G54'],
+    ['Position', 'ABS G90'],
+    ['Tool', 'T' + (m.tool ?? 1)],
+    ['Tool Offset', m.hNum ? 'H' + String(m.hNum).padStart(2, '0') : 'G49'],
+    ['Spindle', (m.spindleOn ? 'S' + (m.spindle ?? 0) + ' ' : '') + 'M' + (m.spindleDir === 4 ? 4 : 3) + (m.spindleOn ? '' : ' (off)')],
+    ['Coolant', m.coolant ? 'M08' : 'M09'],
+    ['Feed', (m.feed ?? 0).toFixed(0) + ' mm/min']
+  ];
+  return rows;
+}
+
+function showCurrentCmds() {
+  let panel = $('cmdsPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'cmdsPanel';
+    panel.className = 'alarm-panel';
+    panel.innerHTML =
+      '<div class="alarm-panel-hdr"><span>CURNT CMDS — ACTIVE CODES</span>' +
+      '<button class="btn btn-sm" id="btnCmdsClose">✕</button></div>' +
+      '<div class="alarm-panel-body" id="cmdsPanelBody"></div>';
+    document.body.appendChild(panel);
+    panel.querySelector('#btnCmdsClose').onclick = () => { panel.style.display = 'none'; };
+  }
+  renderCurrentCmds();
+  panel.style.display = 'flex';
+}
+
+function renderCurrentCmds() {
+  const body = $('cmdsPanelBody');
+  if (!body) return;
+  body.innerHTML = activeCodeList().map(([k, v]) =>
+    '<div class="alarm-row"><span class="alarm-time">' + k + '</span>' +
+    '<span class="alarm-msg">' + String(v) + '</span></div>'
+  ).join('');
+}
+
 // ---------- Tool ----------
 function applyToolFromTable(toolNum) {
   const t = toolTable[toolNum];
@@ -1028,6 +1072,7 @@ document.querySelectorAll('.sk').forEach((btn) => {
       document.querySelector('.subtab[data-sub="work"]')?.click();
       if ($('sbMsg')) $('sbMsg').textContent = 'OFFSET — Work Coordinate System (ZERO = touch-off)';
     } else if (sk === 'f2') {
+      showCurrentCmds();
       if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — ' + machine.activeWcs +
         ' T' + machine.tool + (machine.hNum ? ' G43 H' + String(machine.hNum).padStart(2, '0') : '') +
         ' F' + Math.round(machine.feed) + ' S' + (machine.spindleOn ? machine.spindle : 'OFF');
