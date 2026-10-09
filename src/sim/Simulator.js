@@ -237,8 +237,11 @@ export class Simulator {
       ? MACHINE_PROFILE.rapidRate * this.rapidOvr
       : (m.f || 500) * this.feedOvr;
     const moveTime = (dist / feed) * 60;
-    this.progress += (dt * this.simSpeed) / (moveTime || 0.01);
-    this.elapsed += dt * this.simSpeed;
+    // Hanya hitung waktu yang benar-benar dikonsumsi gerak ini — di sim speed
+    // tinggi satu tick bisa menyelesaikan >1 move, sisanya jangan dihitung.
+    const dProg = (dt * this.simSpeed) / (moveTime || 0.01);
+    this.elapsed += (moveTime || 0.01) * Math.min(dProg, Math.max(0, 1 - this.progress));
+    this.progress += dProg;
     this.onLine(m.line);
     this._applyMeta(m);
 

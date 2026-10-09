@@ -634,6 +634,8 @@ function loadProgram() {
     $('lineCount').textContent = nMove + ' gerakan';
   }
 
+  showLinesView(text);
+
   disposeGroup(trailGroup);
   trailGroup = null;
 
