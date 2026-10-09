@@ -2,7 +2,7 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
-commit: de3a6fb
+commit: 25b541c
 status: Tahap 5 awal — DRO 4 mode (WORK/MACHINE/OPERATOR/DTG), tab MDI, controller profile JSON
 verify: test 38/38 · build OK · smoke browser OK
 ## Sedang berjalan
