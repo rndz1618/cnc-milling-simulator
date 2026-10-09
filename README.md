@@ -6,6 +6,7 @@ Modular web CNC milling trainer with voxel material removal and Haas-style contr
 
 | Rev | Version | Notes |
 |-----|---------|-------|
+| — | 0.9.1 | DRO 4 mode (WORK/MACHINE/OPERATOR/DTG), tab MDI, controller profile JSON (data-driven awal) |
 | — | 0.9.0 | Machine-coordinate engine (WCS G54–G59, G43/G28, DTG, soft-limit halt), parser hardening (N-lines, canned cycles G81–G83, G20/G21, alarm halts, M97/O-subs), data-driven tool geometry, unit tests |
 | — | 0.8.0 | Alarm panel F3, WCS/Tool localStorage, tool auto-apply, chunk loader |
 | rA1 | 0.7.0 | Progressive toolpath trail, live segment, dim rapids / bright feed |
