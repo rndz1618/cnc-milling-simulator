@@ -133,6 +133,13 @@ const modal = parseGCode('G1 X10 F100\nX20\nY30\nM30');
 eq(motionOf(modal).length, 3, 'Modal: G1/F modal dipakai ulang');
 eq(motionOf(modal)[2].f, 100, 'Modal: F modal 100 di blok ketiga');
 
+// ---------- Kode gerak (untuk CURNT CMDS live) ----------
+const codes = parseGCode('G0 X10\nG1 X20 F100\nG2 X30 I5\nM30');
+eq(motionOf(codes)[0].g, 0, 'CURNT CMDS: G0 → move.g=0');
+eq(motionOf(codes)[1].g, 1, 'CURNT CMDS: G1 → move.g=1');
+ok(motionOf(codes).slice(2).every((m) => m.g === 2),
+  'CURNT CMDS: tiap segmen busur G2 membawa g=2');
+
 // ---------- G91 incremental ----------
 const inc = parseGCode('G0 X10 Y10\nG91 X5\nG90 X0 Y0\nM30');
 eq([inc.moves[1].x, inc.moves[1].y], [15, 10], 'G91: incremental dari 10,10 → 15,10');

@@ -53,23 +53,30 @@ try {
   await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'load' });
   await page.waitForTimeout(1500);
   const glines = await page.locator('.gline').count();
-  await page.click('.ovr-btn[data-ovr="sim"][data-val="25"]');
-  await page.click('#btnPlay');
-  await page.waitForTimeout(3000);
-  const status = await page.locator('#simStatus').textContent();
-  const stock = await page.locator('#stockLeft').textContent();
 
-  // Tahap 5: halaman CURNT CMDS (F2) terbuka dan punya isi
+  // Tahap 5: halaman CURNT CMDS (F2) terbuka, punya isi, dan LIVE update saat run
   await page.click('.sk[data-sk="f2"]');
   await page.waitForTimeout(200);
   const cmdsVisible = await page.locator('#cmdsPanel').isVisible();
   const cmdsRows = await page.locator('#cmdsPanelBody .alarm-row').count();
+  const cmdsBefore = await page.locator('#cmdsPanelBody').innerText();
+
+  // Panel CURNT CMDS adalah overlay; jalankan program lewat DOM langsung.
+  await page.evaluate(() => {
+    document.querySelector('.ovr-btn[data-ovr="sim"][data-val="25"]').click();
+    document.querySelector('#btnPlay').click();
+  });
+  await page.waitForTimeout(3000);
+  const status = await page.locator('#simStatus').textContent();
+  const stock = await page.locator('#stockLeft').textContent();
+  const cmdsAfter = await page.locator('#cmdsPanelBody').innerText();
   await browser.close();
 
   const problems = [];
   if (glines < 10) problems.push('daftar baris program kosong (glines=' + glines + ')');
   if (!['RUN', 'DONE'].includes(status)) problems.push('status=' + status);
   if (!cmdsVisible || cmdsRows < 5) problems.push('CURNT CMDS tidak tampil (visible=' + cmdsVisible + ' rows=' + cmdsRows + ')');
+  if (cmdsBefore === cmdsAfter) problems.push('CURNT CMDS statis — tidak update saat proses berjalan');
   if (errors.length) problems.push('pageerror: ' + errors[0]);
   if (problems.length) throw new Error(problems.join('; '));
   console.log('smoke OK — glines=' + glines + ' status=' + status + ' stock=' + stock);

@@ -344,11 +344,11 @@ function blocksToMoves(blocks) {
       }
       const pts = expandArc(x, y, z, tx, ty, tz, ni, nj, nr, motion === 2);
       for (const p of pts) {
-        moves.push({ x: p.x, y: p.y, z: p.z, type: 'feed', ...meta() });
+        moves.push({ x: p.x, y: p.y, z: p.z, type: 'feed', g: motion, ...meta() });
       }
     } else {
       const type = motion === 0 ? 'rapid' : 'feed';
-      moves.push({ x: tx, y: ty, z: tz, type, ...meta() });
+      moves.push({ x: tx, y: ty, z: tz, type, g: motion, ...meta() });
     }
     x = tx; y = ty; z = tz;
   }

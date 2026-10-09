@@ -616,6 +616,10 @@ function refreshUI() {
   updateActiveCodes();
   updateStatusBar();
 
+  // CURNT CMDS live: re-render tiap tick kalau panel sedang terbuka.
+  const cmds = $('cmdsPanel');
+  if (cmds && cmds.style.display !== 'none') renderCurrentCmds();
+
   if (toolpathGroup) toolpathGroup.visible = graphVisible && !sim.playing;
 
   if ($('btnPlay')) $('btnPlay').disabled = sim.playing;

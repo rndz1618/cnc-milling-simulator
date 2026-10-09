@@ -307,6 +307,7 @@ export class Simulator {
   }
 
   _applyMeta(m) {
+    if (m.g != null) this.machine.motion = 'G' + m.g;
     if (m.wcs) this.machine.activeWcs = m.wcs;
     if (m.tool) this.machine.tool = m.tool;
     if (m.spindle != null) {
