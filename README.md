@@ -1,4 +1,4 @@
-# CNC Milling Simulator v0.9.0 — Training
+# CNC Milling Simulator v0.9.1 — Training
 
 Modular web CNC milling trainer with voxel material removal and Haas-style control panel.
 
