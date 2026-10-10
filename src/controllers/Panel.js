@@ -56,6 +56,11 @@ function dedupeById(list, key) {
   return out;
 }
 
+// Batas CONFIG: id pane/view yang punya kode di main.js. Nilai tak dikenal
+// dijepit ke default supaya profil salah tidak membuat pane kosong.
+const PANES = new Set(['program', 'setup', 'jog']);
+const VIEWS = new Set(['editor', 'lines', 'mdi']);
+
 function normModes(raw) {
   const src = Array.isArray(raw) ? raw : [];
   const modes = src
@@ -64,9 +69,10 @@ function normModes(raw) {
       const mode = {
         id: m.id,
         label: m.label || m.id.toUpperCase(),
-        pane: m.pane || 'program'
+        pane: PANES.has(m.pane) ? m.pane : 'program'
       };
-      if (m.view) mode.view = m.view;
+      const view = VIEWS.has(m.view) ? m.view : 'lines';
+      if (mode.pane === 'program') mode.view = view;
       return mode;
     });
   const unique = dedupeById(modes, 'id');

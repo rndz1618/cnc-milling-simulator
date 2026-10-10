@@ -4,7 +4,7 @@
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
 commit: 76de9d0
 status: v0.10.0 — UI shell data-driven: mode EDIT/MEM/MDI/JOG/SETUP, softkey & DRO dari profil JSON, action registry (config vs code)
-verify: test 50/50 · build OK · smoke browser OK (shell dirender dari JSON; mode JOG/MDI/MEM; regresi MDI)
+verify: test 52/52 · build OK · smoke browser OK (shell dirender dari JSON; mode JOG/MDI/MEM; regresi MDI)
 ## Sedang berjalan
 - (tidak ada)
 ## Berikutnya
@@ -15,4 +15,5 @@ verify: test 50/50 · build OK · smoke browser OK (shell dirender dari JSON; mo
 - Keputusan: **CONFIG = struktur/label/urutan/id/nama action; CODE = implementasi action**. Softkey tanpa action valid → no-op (aman). CURNT CMDS & ALARM **tetap overlay** (dipicu action), bukan pane.
 - Profil JSON dipindah ke `public/controllers/haas-style.json` supaya ikut ter-`fetch` di build produksi (sebelumnya `./src/...` hanya ada saat dev). Fallback aman ke `DEFAULT_PROFILE` bila fetch gagal.
 - Smoke mengecek: 5 mode, 4 DRO, 8 softkey dari JSON, transisi pane JOG/MDI/MEM, CURNT CMDS live, regresi MDI (1 blok). Cek dipindah ke `page.evaluate` (GL software di mesin ini membuat `page.click` lambat/timeout).
+- Review pasca-implementasi: action tak dikenal kini no-op + status (bukan crash via `__proto__`); `normalizeProfile` menjepit `pane`/`view` tak dikenal (cegah pane kosong); `showEditView` pindah ke mode EDIT; status saat profil JSON gagal dimuat; teks train/train-goto diselaraskan ke mode MEM/JOG.
 - Meta: commit kecil per task; push ke `main` hanya setelah konfirmasi Jack.

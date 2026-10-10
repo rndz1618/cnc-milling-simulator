@@ -244,6 +244,15 @@ eq(sk.find((s) => s.f === 1)?.label, 'A', 'normalize: dedupe → entri pertama m
 eq(normalizeProfile({ modes: [{ id: 'foo' }], default: 'bar' }).default, 'foo', 'normalize: default tak valid → mode pertama');
 ok(normalizeProfile({ softkeys: [{ f: 2, label: 'Z', action: 'nope' }] }).softkeys[0].action === 'nope', 'normalize: action tak dikenal aman');
 {
+  const m = normalizeProfile({ modes: [{ id: 'foo', pane: 'nope', view: 'nope' }] }).modes[0];
+  eq([m.pane, m.view], ['program', 'lines'], 'normalize: pane/view tak dikenal dijepit ke default');
+  const custom = normalizeProfile({
+    modes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+    softkeys: [{ f: 1 }, { f: 2 }, { f: 3 }, { f: 4 }, { f: 5 }, { f: 6 }]
+  });
+  eq([custom.modes.length, custom.softkeys.length], [3, 6], 'normalize: profil non-default dibiarkan (data-driven)');
+}
+{
   const origFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 503 });
   let threw = false;

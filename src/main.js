@@ -679,7 +679,7 @@ function showLinesView(text) {
 }
 
 function showEditView() {
-  setProgramView('editor');
+  applyMode('edit');
 }
 
 // ---------- Mode / pane / view (data-driven) ----------
@@ -1107,7 +1107,9 @@ document.getElementById('softkeys')?.addEventListener('click', (e) => {
   const btn = e.target.closest('.sk');
   if (!btn) return;
   const action = btn.dataset.action;
-  if (action && ACTIONS[action]) ACTIONS[action]();
+  if (!action) return;
+  if (Object.prototype.hasOwnProperty.call(ACTIONS, action)) ACTIONS[action]();
+  else sbMsg('action "' + action + '" belum diimplementasikan');
 });
 
 if ($('btnTrainClose')) $('btnTrainClose').addEventListener('click', closeTraining);
@@ -1188,7 +1190,10 @@ function animate(now) {
 // ---------- Boot ----------
 async function boot() {
   profile = await loadController('./controllers/haas-style.json')
-    .catch(() => normalizeProfile(null));
+    .catch(() => {
+      sbMsg('controller profile gagal dimuat — pakai default');
+      return normalizeProfile(null);
+    });
   renderModeTabs(profile, profile.default);
   renderDroTabs(profile, 'work');
   renderSoftkeys(profile);
