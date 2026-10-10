@@ -640,6 +640,38 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
     'Holder crash: pesan HOLDER CRASH (bukan RAPID), dapat: ' + (alarms[0] || '').slice(0, 60));
 }
 
+// ---------- Tahap 8: MeshService ----------
+{
+  const { createMeshService } = await import('../src/stock/MeshService.js');
+  // Worker tiruan: balas dengan buffer sederhana
+  class FakeWorker {
+    constructor() { FakeWorker.last = this; this.onmessage = null; }
+    postMessage(msg) { this._sent = msg; }
+    terminate() { this.terminated = true; }
+    reply(data) { this.onmessage({ data }); }
+  }
+  const svc = createMeshService({ WorkerCtor: FakeWorker });
+  const grid = new Uint8Array(8);
+  const p = svc.request({ grid, nx: 2, ny: 2, nz: 2, originX: 0, originY: 0, originZ: 0, res: 1 });
+  const sent = FakeWorker.last._sent;
+  ok(typeof sent.id !== 'undefined', 'MeshService: kirim id');
+  FakeWorker.last.reply({ id: sent.id, position: new Float32Array([0, 0, 0]), normal: new Float32Array([0, 1, 0]), color: new Float32Array([1, 1, 1]) });
+  const res = await p;
+  ok(res && res.position.length === 3, 'MeshService: reply → resolve buffer');
+
+  const p2 = svc.request({ grid, nx: 2, ny: 2, nz: 2, originX: 0, originY: 0, originZ: 0, res: 1 });
+  const id2 = FakeWorker.last._sent.id;
+  FakeWorker.last.reply({ id: id2, error: 'boom' });
+  let threw = false; try { await p2; } catch { threw = true; }
+  ok(threw, 'MeshService: reply error → reject');
+  svc.dispose();
+  ok(FakeWorker.last.terminated === true, 'MeshService: dispose men-terminate worker');
+
+  const none = createMeshService({ WorkerCtor: null });
+  let threw2 = false; try { await none.request({ grid, nx: 2, ny: 2, nz: 2, originX: 0, originY: 0, originZ: 0, res: 1 }); } catch { threw2 = true; }
+  ok(threw2, 'MeshService: tanpa Worker → reject (pemanggil fallback sinkron)');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
