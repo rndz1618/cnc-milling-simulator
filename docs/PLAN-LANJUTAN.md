@@ -56,10 +56,11 @@ Tiga triad sumbu = **bukan bug**: (1) **ORIGIN MESIN** (oranye, di meja) titik n
 - CURNT CMDS (F2) jadi halaman sungguhan; alarm panel masuk sistem halaman.
 **Selesai jika:** mengganti JSON mengubah panel tanpa sentuh JS; MDI bisa menjalankan `G0 X10`; DRO punya 4 mode.
 
-### Tahap 6 — Interpreter realism
-- G41/G42 cutter comp (implementasi, hapus alarm "not supported" di Parser.js).
-- G84 tapping; arc di G18/G19; G4 dwell nyata (waktu simulasi); feed hold di tengah blok lalu resume; ramp spindle; animasi tool change (ATC).
-**Selesai jika:** program kontur dengan kompensasi radius jalan benar vs manual offset; unit test + visual.
+### Tahap 6 — Interpreter realism — SELESAI (v0.11.0)
+- G41/G42 cutter comp — pass murni `src/machine/Compensator.js` (`applyCutterComp`, lead-in/out + sambungan miter), dieksekusi di `loadProgram` (WORK coords).
+- G84 tapping (rigid, balik `spindleDir` saat keluar); arc G18/G19 (plane-aware `expandArc`); G4 dwell nyata (timer simulasi); feed hold di tengah blok lalu resume (`feedHold()`); ramp spindle (~1.5 s) + animasi tool change (ATC).
+- G92 **ditunda** (di luar scope v0.11.0 — lihat `docs/SPEC-tahap6-interpreter-realism.md` §4).
+**Selesai jika:** program kontur dengan kompensasi radius jalan benar vs manual offset; unit test + visual. ✓ (85 unit test; smoke FEED HOLD + RPM)
 
 ### Tahap 7 — Editor setup & fixture
 - UI parameter vise (tinggi/lebar rahang, bukaan, posisi per WCS), multi-vise (G54 & G55 masing-masing).

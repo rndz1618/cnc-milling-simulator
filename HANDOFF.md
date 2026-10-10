@@ -2,18 +2,17 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
-commit: 76de9d0
-status: v0.10.0 — UI shell data-driven: mode EDIT/MEM/MDI/JOG/SETUP, softkey & DRO dari profil JSON, action registry (config vs code)
-verify: test 52/52 · build OK · smoke browser OK (shell dirender dari JSON; mode JOG/MDI/MEM; regresi MDI)
+commit: ec2ea1c
+status: v0.11.0 — interpreter realism: cutter comp G41/G42, arc G18/G19, G4 dwell nyata, G84 tapping, feed hold mid-blok, ramp spindle + animasi ATC
+verify: test 85/85 · build OK · smoke browser OK (shell JSON + FEED HOLD flag + RPM aktual)
 ## Sedang berjalan
 - (tidak ada)
 ## Berikutnya
-1. **Tahap 6** (interpreter realism): G41/G42 (cutter comp), G84 tapping, dwell nyata (G4), feed hold di tengah blok, G92.
-2. Setelah itu: Tahap 7 (fixture editor) → 8 (removal v2) → 9 (SaaS).
+1. **Tahap 7** (fixture editor): UI parameter vise (tinggi/lebar rahang, bukaan, posisi per WCS), multi-vise G54 & G55, preset material + touch-off semi-otomatis.
+2. Setelah itu: Tahap 8 (removal v2) → 9 (SaaS).
+- Ditunda dari Tahap 6: **G92** (work coordinate shift) — di luar scope v0.11.0 (spec §4).
 ## Catatan gelombang terakhir (2026-10-10)
-- v0.10.0: `src/controllers/Panel.js` — `normalizeProfile` (murni, unit test) + renderer (`renderModeTabs`/`renderSoftkeys`/`renderDroTabs`/`renderSetupSubs`) + `loadController`. `main.js` boot async, `applyMode`/`applySetupSub`, delegasi klik (`#modeTabs`/`#softkeys`/`#setupSubs`/`#droTabs`), `ACTIONS` registry. Pane `#panelProgram`/`#panelSetup`/`#panelJog` via `data-pane`; editor/lines/mdi via `data-view`.
-- Keputusan: **CONFIG = struktur/label/urutan/id/nama action; CODE = implementasi action**. Softkey tanpa action valid → no-op (aman). CURNT CMDS & ALARM **tetap overlay** (dipicu action), bukan pane.
-- Profil JSON dipindah ke `public/controllers/haas-style.json` supaya ikut ter-`fetch` di build produksi (sebelumnya `./src/...` hanya ada saat dev). Fallback aman ke `DEFAULT_PROFILE` bila fetch gagal.
-- Smoke mengecek: 5 mode, 4 DRO, 8 softkey dari JSON, transisi pane JOG/MDI/MEM, CURNT CMDS live, regresi MDI (1 blok). Cek dipindah ke `page.evaluate` (GL software di mesin ini membuat `page.click` lambat/timeout).
-- Review pasca-implementasi: action tak dikenal kini no-op + status (bukan crash via `__proto__`); `normalizeProfile` menjepit `pane`/`view` tak dikenal (cegah pane kosong); `showEditView` pindah ke mode EDIT; status saat profil JSON gagal dimuat; teks train/train-goto diselaraskan ke mode MEM/JOG.
-- Meta: commit kecil per task; push ke `main` hanya setelah konfirmasi Jack.
+- v0.11.0: kompensasi radius via pass murni `src/machine/Compensator.js` (`applyCutterComp(moves, {getRadius})`) dipanggil di `main.js` `loadProgram`; offset X/Y saja (G17), sambungan miter + lead-in/out dari posisi tool nyata. Entry `comp` (+parsing `D`) & `dwell` baru dari Parser; arc kini plane-aware (`expandArc` G17/G18/G19); G84 rigid (feed masuk + `spindleDir` 3→4 saat keluar, alarm bila `Q`).
+- Simulator: timer tunggal (`this.timer`/`timerKind` dwell|atc, `ATC_TIME=1.0`) menahan dwell & ganti tool; `feedHold()` = `pause()` + `holdReason='feed'` (resume via `play()`); `_applyMeta` set `spindleTarget` (bukan `spindle`), `updateSpindle(dt)` ramp linear ~1.5 s ke target — `machine.spindle` tetap koordinat mesin, ramp hanya tampilan.
+- UI: `#btnPause` → `sim.feedHold()`, flag **FEED HOLD** di `updateStatusBar`, `animate()` memanggil `sim.updateSpindle(dt)`, `onTool` → `Scene.animateToolChange(toolMesh)` (angkat-turun ~15 mm, murni visual via `userData.liftZ`).
+- Gate: `npm test` (85/85) + `npm run verify` (smoke tambah cek flag FEED HOLD dan RPM aktual `hdrSpindle`). Commit kecil per task; push ke `main` hanya setelah konfirmasi Jack.
