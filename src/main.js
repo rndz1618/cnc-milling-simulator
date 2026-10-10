@@ -6,6 +6,7 @@ import { applyCutterComp } from './machine/Compensator.js';
 import {
   makeFixture, normalizeFixtures, serializeScenario, parseScenario, MATERIALS
 } from './machine/Fixtures.js';
+import { EDGES, edgePlane, contactOffset, checkContact, surfaceCoord } from './machine/TouchOff.js';
 import { FixtureManager } from './sim/FixtureManager.js';
 import {
   createMachineState,
@@ -1176,6 +1177,141 @@ if ($('scenarioDelete')) {
     sbMsg('Skenario dihapus: ' + name);
   });
 }
+
+// ---------- Touch-off wizard ----------
+const TO_INC = 0.5;
+const TO_EPS = 0.05;
+function toToolRadius() { return (toolTable[machine.tool]?.dia ?? 12) / 2; }
+function toCurrentEdge() {
+  const sel = $('toEdge');
+  return (sel && sel.value) || 'x-';
+}
+function toAxis(edge) { return edge[0]; }
+function toSelectedFixture() {
+  const sel = $('toFixture');
+  const wcs = sel && sel.value ? sel.value : (fixtureState[0] && fixtureState[0].wcs);
+  return fixtureState.find((f) => f.wcs === wcs) || fixtureState[0] || null;
+}
+function toSelectedStock() {
+  return toEdgeGeometry() && toEdgeGeometry().stock;
+}
+function toEdgeGeometry() {
+  const f = toSelectedFixture();
+  if (!f) return null;
+  const en = fixtures.entries.find((e) => e.fixture.wcs === f.wcs);
+  if (!en) return null;
+  return {
+    stock: en.stock,
+    origin: en.origin,
+    size: { x: en.stock.sizeX, y: en.stock.sizeY, z: en.stock.sizeZ }
+  };
+}
+function toDistance() {
+  const g = toEdgeGeometry();
+  const edge = toCurrentEdge();
+  if (!g || !edge) return null;
+  const plane = edgePlane(edge, g.origin, g.size);
+  return plane.value - surfaceCoord(edge, toToolRadius(), machine);
+}
+function toInContact() {
+  const g = toEdgeGeometry();
+  const edge = toCurrentEdge();
+  if (!g || !edge) return false;
+  return checkContact(edge, toToolRadius(), machine, edgePlane(edge, g.origin, g.size), TO_EPS);
+}
+function toClampTravel(axis, v) {
+  const t = MACHINE_PROFILE.travel[axis];
+  if (v < t[0]) { pushAlarm('SOFT LIMIT ' + axis.toUpperCase() + ' — TOUCH-OFF DIBATASI', null); return t[0]; }
+  if (v > t[1]) { pushAlarm('SOFT LIMIT ' + axis.toUpperCase() + ' — TOUCH-OFF DIBATASI', null); return t[1]; }
+  return v;
+}
+function updateTouchOff() {
+  const stock = toSelectedStock();
+  const edge = toCurrentEdge();
+  const start = $('toStart');
+  if (start) start.disabled = !stock || !edge || !toInContact();
+  const read = $('toReadout');
+  if (read) {
+    if (!stock) read.textContent = 'Fixture tanpa stok — tambahkan fixture dulu di tab FIXTURE.';
+    else if (!edge) read.textContent = 'Pilih edge permukaan.';
+    else {
+      const d = toDistance();
+      read.textContent = edge.toUpperCase() + ' — jarak ke permukaan: ' + d.toFixed(3) + ' mm' +
+        (toInContact() ? '  [KONTAK — SET WCS tersedia]' : '');
+    }
+  }
+}
+function toStep(dir) {
+  const stock = toSelectedStock();
+  const edge = toCurrentEdge();
+  if (!stock || !edge) return;
+  const axis = toAxis(edge);
+  const d = toDistance();
+  if (d == null) return;
+  if (dir < 0) {
+    if (Math.abs(d) <= TO_EPS) return;
+    const move = Math.min(TO_INC, Math.max(0.05, Math.abs(d) - TO_EPS));
+    machine[axis] = toClampTravel(axis, machine[axis] - Math.sign(d) * move);
+  } else {
+    machine[axis] = toClampTravel(axis, machine[axis] + TO_INC);
+  }
+  machine.dtg = { x: 0, y: 0, z: 0 };
+  refreshUI();
+  updateTouchOff();
+}
+function toProbe() {
+  const g = toEdgeGeometry();
+  const edge = toCurrentEdge();
+  if (!g || !edge) return;
+  const axis = toAxis(edge);
+  const plane = edgePlane(edge, g.origin, g.size);
+  const r = toToolRadius();
+  const x = plane.value - r, y = plane.value + r;
+  machine[axis] = toClampTravel(axis,
+    edge === 'x-' ? x : edge === 'x+' ? y : edge === 'y-' ? x : edge === 'y+' ? y : plane.value);
+  machine.dtg = { x: 0, y: 0, z: 0 };
+  refreshUI();
+  updateTouchOff();
+}
+function openTouchOff() {
+  applyMode('setup');
+  applySetupSub('work');
+  const sel = $('toFixture');
+  if (sel) {
+    sel.innerHTML = '<option value="">— pilih —</option>' +
+      fixtureState.map((f) => '<option value="' + f.wcs + '">' + f.wcs + ' — ' + f.name + '</option>').join('');
+    const pref = (machine.activeWcs && fixtureState.some((f) => f.wcs === machine.activeWcs)) ? machine.activeWcs : (fixtureState[0] && fixtureState[0].wcs);
+    sel.value = pref || '';
+  }
+  const ov = $('touchoffOverlay');
+  if (ov) { ov.style.display = 'flex'; ov.setAttribute('aria-hidden', 'false'); }
+  updateTouchOff();
+}
+function closeTouchOff() {
+  const ov = $('touchoffOverlay');
+  if (ov) { ov.style.display = 'none'; ov.setAttribute('aria-hidden', 'true'); }
+}
+function touchOffSetWcs() {
+  const f = toSelectedFixture();
+  const edge = toCurrentEdge();
+  if (!f || !edge || !toInContact()) return;
+  const off = contactOffset(edge, toToolRadius(), machine);
+  machine.wcs[f.wcs] = machine.wcs[f.wcs] || { x: 0, y: 0, z: 0 };
+  machine.wcs[f.wcs][off.axis] = off.value;
+  savePersistedOffsets();
+  syncOffsetInputsFromTables();
+  refreshUI();
+  sbMsg('Touch-off set — ' + f.wcs + ' ' + off.axis.toUpperCase() + ' = ' + off.value.toFixed(3));
+  closeTouchOff();
+}
+if ($('btnTouchOff')) $('btnTouchOff').addEventListener('click', openTouchOff);
+if ($('toClose')) $('toClose').addEventListener('click', closeTouchOff);
+if ($('toIncNeg')) $('toIncNeg').addEventListener('click', () => toStep(-1));
+if ($('toIncPos')) $('toIncPos').addEventListener('click', () => toStep(1));
+if ($('toProbe')) $('toProbe').addEventListener('click', toProbe);
+if ($('toStart')) $('toStart').addEventListener('click', touchOffSetWcs);
+if ($('toFixture')) $('toFixture').addEventListener('change', updateTouchOff);
+if ($('toEdge')) $('toEdge').addEventListener('change', updateTouchOff);
 
 // Jog
 document.querySelectorAll('.jog-inc').forEach((btn) => {

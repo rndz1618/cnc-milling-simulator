@@ -21,6 +21,8 @@ function surfaceCoord(edge, toolRadius, machinePos) {
   return machinePos.z;
 }
 
+export { surfaceCoord };
+
 export function contactOffset(edge, toolRadius, machinePos) {
   return { axis: axisOf(edge), value: surfaceCoord(edge, toolRadius, machinePos) };
 }

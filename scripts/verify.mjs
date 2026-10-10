@@ -141,6 +141,46 @@ try {
     localStorage.removeItem('cnc-sim-scenarios');
     return out;
   });
+
+  // Tahap 7: wizard touch-off — jog zai PROBE ke kontak lalu SET WCS.
+  const to = await page.evaluate(() => {
+    const out = { overlay: false, disabledBefore: null, disabledAfter: null, g54x0: NaN, g54x: NaN, msg: '' };
+    // Normalisasi G54 ke stok default top-center (boot mengaktifkan auto-fit).
+    const row = document.querySelector('#fixtureList .fx-row');
+    if (row) {
+      const bubble = () => new Event('input', { bubbles: true });
+      const setField = (sel, val) => {
+        const el = document.querySelector('#fixtureList .fx-row ' + sel);
+        if (el) { el.value = val; el.dispatchEvent(bubble()); }
+      };
+      setField('input[data-field="stockX"]', 100);
+      setField('input[data-field="stockY"]', 80);
+      setField('input[data-field="stockZ"]', 20);
+      setField('select[data-field="placement"]', 'top-center');
+    }
+    document.querySelector('#btnJogHome')?.click();
+    document.querySelector('#modeTabs .mode-tab[data-mode="setup"]').click();
+    const sub = document.querySelector('#setupSubs [data-sub="work"]');
+    if (sub) sub.click();
+    const btn = document.querySelector('#btnTouchOff');
+    if (btn) btn.click();
+    const ov = document.querySelector('#touchoffOverlay');
+    out.overlay = !!ov && getComputedStyle(ov).display === 'flex';
+    const fixture = document.querySelector('#toFixture');
+    if (fixture) { fixture.value = 'G54'; fixture.dispatchEvent(new Event('change')); }
+    const edge = document.querySelector('#toEdge');
+    if (edge) { edge.value = 'x-'; edge.dispatchEvent(new Event('change')); }
+    const xInput = document.querySelector('#workOffsetTable tr[data-wcs="G54"] input[data-axis="x"]');
+    out.g54x0 = xInput ? Number(xInput.value) : NaN;
+    const start = document.querySelector('#toStart');
+    out.disabledBefore = start ? start.disabled : null;
+    document.querySelector('#toProbe')?.click();
+    out.disabledAfter = start ? start.disabled : null;
+    start?.click();
+    out.g54x = xInput ? Number(xInput.value) : NaN;
+    out.msg = document.querySelector('#sbMsg')?.textContent || '';
+    return out;
+  });
   await browser.close();
 
   const glines = shell.glines;
@@ -179,6 +219,11 @@ try {
   if (fx.rowsBefore < 1) problems.push('daftar fixture kosong (rows=' + fx.rowsBefore + ')');
   if (fx.rowsAfter <= fx.rowsBefore) problems.push('#fxAdd tidak menambah fixture (' + fx.rowsBefore + '->' + fx.rowsAfter + ')');
   if (!fx.saved) problems.push('skenario tidak tersimpan');
+  if (!to.overlay) problems.push('wizard touch-off tidak terbuka (overlay=' + to.overlay + ')');
+  if (to.disabledBefore !== true) problems.push('#toStart harus disabled sebelum kontak (disabledBefore=' + to.disabledBefore + ')');
+  if (to.disabledAfter !== false) problems.push('#toStart harus enabled saat kontak (disabledAfter=' + to.disabledAfter + ')');
+  if (!(Math.abs(to.g54x + 50) < 0.05)) problems.push('WCS G54 X tidak ter-set touch-off (x=' + to.g54x + ', harap edge kiri stok default -50)');
+  if (!/Touch-off set/.test(to.msg || '')) problems.push('pesan touch-off tidak muncul (msg=' + to.msg + ')');
   if (errors.length) problems.push('pageerror: ' + errors[0]);
   if (problems.length) throw new Error(problems.join('; '));
   console.log('smoke OK — glines=' + glines + ' status=' + status + ' stock=' + stock);

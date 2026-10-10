@@ -77,7 +77,6 @@
           <span class="subtabs" id="setupSubs">
             <button class="subtab active" data-sub="work">WORK</button>
             <button class="subtab" data-sub="tool">TOOL</button>
-            <button class="subtab" data-sub="stock">STOCK</button>
           </span>
         </div>
 
@@ -133,6 +132,7 @@
           <div class="setup-actions">
             <button class="btn btn-primary" id="btnApplyWcs">Apply Active WCS</button>
             <button class="btn" id="btnResetWcs" title="Kembalikan semua offset WCS ke default">Reset Default</button>
+            <button class="btn" id="btnTouchOff" title="Wizard edge-finder kontak">Touch-off</button>
           </div>
         </div>
 
@@ -417,6 +417,38 @@
       <span class="sb-item">Arrow keys = Jog (mode JOG)</span>
     </div>
   </footer>
+
+  <div class="train-overlay" id="touchoffOverlay" style="display:none" aria-hidden="true">
+    <div class="train-panel">
+      <div class="train-hdr">
+        <span>TOUCH-OFF — edge-finder kontak (Haas)</span>
+        <button class="btn btn-sm" id="toClose">✕</button>
+      </div>
+      <div class="train-body">
+        <p class="train-intro">Pilih fixture + edge, dekatkan edge-finder ke permukaan, lalu SET WCS saat kontak.</p>
+        <div class="stock-grid">
+          <label>Fixture <select id="toFixture"></select></label>
+          <label>Edge <select id="toEdge">
+            <option value="">— pilih —</option>
+            <option value="x-">X− (kiri)</option>
+            <option value="x+">X+ (kanan)</option>
+            <option value="y-">Y− (depan)</option>
+            <option value="y+">Y+ (belakang)</option>
+            <option value="z-top">Z (atas)</option>
+          </select></label>
+        </div>
+        <div class="setup-hint" id="toReadout">—</div>
+        <div class="setup-actions" id="toJog" style="display:flex;flex-wrap:wrap">
+          <button class="btn" id="toIncNeg">− 0.5</button>
+          <button class="btn btn-primary" id="toProbe">PROBE ke kontak</button>
+          <button class="btn" id="toIncPos">+ 0.5</button>
+        </div>
+        <div class="setup-actions">
+          <button class="btn btn-primary" id="toStart" disabled>SET WCS (kontak)</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="./src/main.js"></script>
 </body>
