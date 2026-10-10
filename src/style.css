@@ -132,7 +132,7 @@ header h1 {
   outline: none;
 }
 #gcodeInput { color: #c9d1d9; padding: 8px; resize: none; }
-#gcodeLines { display: none; overflow-y: auto; padding: 0; }
+#gcodeLines { overflow-y: auto; padding: 0; }
 .gline {
   display: flex;
   padding: 1px 6px;
@@ -595,6 +595,12 @@ header h1 {
   padding: 4px 6px; border-radius: 3px; font-size: 0.72rem;
 }
 .setup-pane { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- v0.10 pane/view data-driven (controller profile) ---- */
+.pane-hidden { display: none !important; }
+.view-hidden { display: none !important; }
+#panelSetup, #panelJog { display: flex; flex-direction: column; gap: 8px; }
+.gcode-wrap > [data-view] { width: 100%; height: 100%; }
 
 /* responsivitas — cegah teks terpotong di panel sempit (temuan UI v0.6) */
 @media (max-width: 1240px) {

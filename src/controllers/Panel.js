@@ -124,3 +124,65 @@ export function normalizeProfile(raw) {
     softkeys: normSoftkeys(raw.softkeys)
   };
 }
+
+/**
+ * Muat profil dari file JSON. Gagal fetch/parse → reject (pemanggil pakai
+ * DEFAULT_PROFILE sebagai fallback).
+ */
+export async function loadController(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('controller ' + res.status + ' ' + url);
+  return normalizeProfile(await res.json());
+}
+
+function fillButtons(host, items, make) {
+  host.innerHTML = '';
+  for (const item of items) host.appendChild(make(item));
+}
+
+function makeTab(cls, attr, value, label, active) {
+  const b = document.createElement('button');
+  b.className = cls + (active ? ' active' : '');
+  b.setAttribute(attr, value);
+  b.textContent = label;
+  return b;
+}
+
+export function renderModeTabs(profile, active) {
+  const host = document.getElementById('modeTabs');
+  if (!host) return;
+  fillButtons(host, profile.modes, (m) =>
+    makeTab('mode-tab', 'data-mode', m.id, m.label, m.id === active)
+  );
+}
+
+export function renderDroTabs(profile, active) {
+  const host = document.getElementById('droTabs');
+  if (!host) return;
+  fillButtons(host, profile.droModes, (d) =>
+    makeTab('dro-tab', 'data-dro', d.id, d.label, d.id === active)
+  );
+}
+
+export function renderSoftkeys(profile) {
+  const host = document.getElementById('softkeys');
+  if (!host) return;
+  fillButtons(host, profile.softkeys, (s) => {
+    const b = document.createElement('button');
+    b.className = 'sk';
+    b.setAttribute('data-sk', 'f' + s.f);
+    if (s.action) b.setAttribute('data-action', s.action);
+    b.innerHTML = 'F' + s.f + '<br/><span class="sk-lbl" id="sk' + s.f + '"></span>';
+    b.querySelector('.sk-lbl').textContent = s.label;
+    return b;
+  });
+}
+
+export function renderSetupSubs(profile, active) {
+  const host = document.getElementById('setupSubs');
+  if (!host) return;
+  fillButtons(host, profile.setupSubs, (s) =>
+    makeTab('subtab', 'data-sub', s.id, s.label, s.id === active)
+  );
+}
+

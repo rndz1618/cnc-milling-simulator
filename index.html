@@ -19,11 +19,12 @@
   <header>
     <div class="hdr-left">
       <h1>CNC Milling Simulator <span class="badge">v0.9.3</span></h1>
-      <div class="mode-tabs">
-        <button class="mode-tab" data-mode="setup">SETUP</button>
-        <button class="mode-tab active" data-mode="edit">EDIT</button>
+      <div class="mode-tabs" id="modeTabs">
+        <button class="mode-tab" data-mode="edit">EDIT</button>
+        <button class="mode-tab active" data-mode="mem">MEM</button>
         <button class="mode-tab" data-mode="mdi">MDI</button>
-        <button class="mode-tab" data-mode="operation">OPERATION</button>
+        <button class="mode-tab" data-mode="jog">JOG</button>
+        <button class="mode-tab" data-mode="setup">SETUP</button>
       </div>
     </div>
     <div class="hdr-right">
@@ -35,13 +36,13 @@
 
   <div class="main">
     <div class="left-panel">
-      <div id="panelProgram">
+      <div id="panelProgram" data-pane="program">
         <div class="panel-h">
           <span>Program</span>
           <span id="lineCount">0 gerakan</span>
         </div>
         <div id="lineInfo">Baris aktif: —</div>
-        <div id="mdiWrap" style="display:none;flex-direction:column;gap:6px;margin-bottom:6px">
+        <div id="mdiWrap" data-view="mdi" class="view-hidden" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px">
           <div class="panel-h"><span>MDI</span></div>
           <textarea id="mdiInput" spellcheck="false" placeholder="Ketik satu baris/blok G-code, lalu Cycle Start"></textarea>
           <div class="left-actions">
@@ -50,10 +51,10 @@
           </div>
         </div>
         <div class="gcode-wrap">
-          <textarea id="gcodeInput" spellcheck="false"></textarea>
-          <div id="gcodeLines"></div>
+          <div data-view="editor"><textarea id="gcodeInput" spellcheck="false"></textarea></div>
+          <div data-view="lines" id="gcodeLines"></div>
         </div>
-        <div class="left-actions">
+        <div class="left-actions" id="progActions">
           <button class="btn btn-primary" id="btnLoad">Load</button>
           <button class="btn" id="btnExample">Contoh</button>
           <button class="btn" id="btnClear">Clear</button>
@@ -70,13 +71,12 @@
         </div>
       </div>
 
-      <div id="panelSetup" style="display:none;flex-direction:column;height:100%;min-height:0">
+      <div id="panelSetup" data-pane="setup" class="pane-hidden" style="flex-direction:column;height:100%;min-height:0">
         <div class="panel-h">
           <span>Setup</span>
-          <span class="subtabs">
+          <span class="subtabs" id="setupSubs">
             <button class="subtab active" data-sub="work">WORK</button>
             <button class="subtab" data-sub="tool">TOOL</button>
-            <button class="subtab" data-sub="jog">JOG</button>
             <button class="subtab" data-sub="stock">STOCK</button>
           </span>
         </div>
@@ -169,38 +169,6 @@
           </div>
         </div>
 
-        <div id="setupJog" class="setup-pane" style="display:none">
-          <div class="setup-hint">HANDLE JOG — gerakkan sumbu manual (training setup)</div>
-          <div class="jog-step">
-            <span>Increment</span>
-            <div class="jog-inc-btns">
-              <button class="btn btn-sm jog-inc active" data-inc="0.1">0.1</button>
-              <button class="btn btn-sm jog-inc" data-inc="1">1.0</button>
-              <button class="btn btn-sm jog-inc" data-inc="10">10</button>
-            </div>
-          </div>
-          <div class="jog-axes">
-            <div class="jog-axis-row">
-              <span class="jog-lbl x">X</span>
-              <button class="btn jog-btn" data-axis="x" data-dir="-1">−</button>
-              <button class="btn jog-btn" data-axis="x" data-dir="1">+</button>
-            </div>
-            <div class="jog-axis-row">
-              <span class="jog-lbl y">Y</span>
-              <button class="btn jog-btn" data-axis="y" data-dir="-1">−</button>
-              <button class="btn jog-btn" data-axis="y" data-dir="1">+</button>
-            </div>
-            <div class="jog-axis-row">
-              <span class="jog-lbl z">Z</span>
-              <button class="btn jog-btn" data-axis="z" data-dir="-1">−</button>
-              <button class="btn jog-btn" data-axis="z" data-dir="1">+</button>
-            </div>
-          </div>
-          <div class="setup-actions">
-            <button class="btn" id="btnJogHome">ZERO RETURN (home)</button>
-          </div>
-        </div>
-
         <div id="setupStock" class="setup-pane" style="display:none">
           <div class="setup-hint">STOCK — ukuran &amp; posisi terhadap work zero (G54)</div>
           <div class="stock-grid">
@@ -228,6 +196,38 @@
           <div class="setup-hint" id="stockInfo">origin mesin: -50.0, -40.0, -20.0</div>
         </div>
       </div>
+
+      <div id="panelJog" data-pane="jog" class="pane-hidden">
+        <div class="setup-hint">HANDLE JOG — gerakkan sumbu manual (mode JOG)</div>
+        <div class="jog-step">
+          <span>Increment</span>
+          <div class="jog-inc-btns">
+            <button class="btn btn-sm jog-inc active" data-inc="0.1">0.1</button>
+            <button class="btn btn-sm jog-inc" data-inc="1">1.0</button>
+            <button class="btn btn-sm jog-inc" data-inc="10">10</button>
+          </div>
+        </div>
+        <div class="jog-axes">
+          <div class="jog-axis-row">
+            <span class="jog-lbl x">X</span>
+            <button class="btn jog-btn" data-axis="x" data-dir="-1">−</button>
+            <button class="btn jog-btn" data-axis="x" data-dir="1">+</button>
+          </div>
+          <div class="jog-axis-row">
+            <span class="jog-lbl y">Y</span>
+            <button class="btn jog-btn" data-axis="y" data-dir="-1">−</button>
+            <button class="btn jog-btn" data-axis="y" data-dir="1">+</button>
+          </div>
+          <div class="jog-axis-row">
+            <span class="jog-lbl z">Z</span>
+            <button class="btn jog-btn" data-axis="z" data-dir="-1">−</button>
+            <button class="btn jog-btn" data-axis="z" data-dir="1">+</button>
+          </div>
+        </div>
+        <div class="setup-actions">
+          <button class="btn" id="btnJogHome">ZERO RETURN (home)</button>
+        </div>
+      </div>
     </div>
 
     <div class="center-panel">
@@ -243,7 +243,7 @@
       <div class="dro-box">
         <div class="dro-title">
           Position
-          <span class="dro-tabs">
+          <span class="dro-tabs" id="droTabs">
             <button class="dro-tab active" data-dro="work">WORK</button>
             <button class="dro-tab" data-dro="machine">MACHINE</button>
             <button class="dro-tab" data-dro="operator">OPERATOR</button>

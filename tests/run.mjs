@@ -4,7 +4,7 @@
  */
 import { parseGCode } from '../src/machine/Parser.js';
 import { createMachineState, moveTarget, workCoords, outOfTravel } from '../src/machine/MachineState.js';
-import { normalizeProfile } from '../src/controllers/Panel.js';
+import { normalizeProfile, loadController } from '../src/controllers/Panel.js';
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -243,6 +243,14 @@ eq(sk.filter((s) => s.f === 1).length, 1, 'normalize: f duplikat di-dedupe');
 eq(sk.find((s) => s.f === 1)?.label, 'A', 'normalize: dedupe → entri pertama menang');
 eq(normalizeProfile({ modes: [{ id: 'foo' }], default: 'bar' }).default, 'foo', 'normalize: default tak valid → mode pertama');
 ok(normalizeProfile({ softkeys: [{ f: 2, label: 'Z', action: 'nope' }] }).softkeys[0].action === 'nope', 'normalize: action tak dikenal aman');
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 503 });
+  let threw = false;
+  try { await loadController('/missing.json'); } catch { threw = true; }
+  globalThis.fetch = origFetch;
+  ok(threw, 'loadController: reject saat HTTP gagal');
+}
 
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);

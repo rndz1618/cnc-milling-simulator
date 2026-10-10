@@ -25,6 +25,10 @@ import * as THREE from 'three';
 import {
   trainState, markTrain, openTraining, closeTraining, resetTraining, renderTrainSteps
 } from './train.js';
+import {
+  normalizeProfile, loadController,
+  renderModeTabs, renderDroTabs, renderSoftkeys, renderSetupSubs
+} from './controllers/Panel.js';
 
 const SAMPLE = `; Contour + Pocket — Tool D6 | Z0 = top of stock (G54)
 G21 G90 G17 G54
@@ -106,7 +110,8 @@ const machine = createMachineState();
 let activeTool = 1;
 let droMode = 'work';
 let jogInc = 0.1;
-let currentMode = 'edit';
+let currentMode = 'mem';
+let profile = normalizeProfile(null);
 let lastActiveLine = null;
 let alarmHistory = [];
 let toolpathGroup = null;
@@ -653,6 +658,15 @@ function highlightLine(lineNum) {
   }
 }
 
+function setProgramView(view) {
+  const pane = $('panelProgram');
+  if (!pane) return;
+  pane.querySelectorAll('[data-view]').forEach((v) => {
+    v.classList.toggle('view-hidden', v.dataset.view !== view);
+  });
+  if ($('progActions')) $('progActions').classList.toggle('pane-hidden', view === 'mdi');
+}
+
 function showLinesView(text) {
   const lines = text.split(/\r?\n/);
   const wrap = $('gcodeLines');
@@ -661,13 +675,36 @@ function showLinesView(text) {
     '<div class="gline" data-line="' + (i + 1) + '"><span class="ln">' + (i + 1) +
     '</span><span class="tx">' + t.replace(/</g, '&lt;') + '</span></div>'
   ).join('');
-  if ($('gcodeInput')) $('gcodeInput').style.display = 'none';
-  wrap.style.display = 'block';
+  setProgramView('lines');
 }
 
 function showEditView() {
-  if ($('gcodeInput')) $('gcodeInput').style.display = 'block';
-  if ($('gcodeLines')) $('gcodeLines').style.display = 'none';
+  setProgramView('editor');
+}
+
+// ---------- Mode / pane / view (data-driven) ----------
+function applyMode(id) {
+  const mode = profile.modes.find((m) => m.id === id) || profile.modes[0];
+  currentMode = mode.id;
+  document.querySelectorAll('#modeTabs .mode-tab').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode.id);
+  });
+  document.querySelectorAll('[data-pane]').forEach((p) => {
+    p.classList.toggle('pane-hidden', p.dataset.pane !== mode.pane);
+  });
+  if (mode.pane === 'program') setProgramView(mode.view || 'lines');
+  if ($('simMode')) $('simMode').textContent = mode.id.toUpperCase();
+  updateStatusBar();
+}
+
+function applySetupSub(sub) {
+  document.querySelectorAll('#setupSubs .subtab').forEach((b) => {
+    b.classList.toggle('active', b.dataset.sub === sub);
+  });
+  ['work', 'tool', 'stock'].forEach((p) => {
+    const el = $('setup' + p.charAt(0).toUpperCase() + p.slice(1));
+    if (el) el.style.display = sub === p ? 'flex' : 'none';
+  });
 }
 
 // ---------- Load program ----------
@@ -729,7 +766,7 @@ function loadProgram() {
 
 // ---------- Jog ----------
 function jogAxis(axis, dir) {
-  if (currentMode !== 'setup') return;
+  if (currentMode !== 'jog') return;
   const t = MACHINE_PROFILE.travel;
   let v = machine[axis] + dir * jogInc;
   const lo = t[axis][0], hi = t[axis][1];
@@ -845,59 +882,24 @@ if ($('btnTopView')) $('btnTopView').addEventListener('click', () => {
 });
 if ($('btnIsoView')) $('btnIsoView').addEventListener('click', frameStock);
 
-document.querySelectorAll('.mode-tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.mode-tab').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentMode = btn.dataset.mode;
-    if ($('simMode')) $('simMode').textContent = currentMode.toUpperCase();
-    const prog = $('panelProgram');
-    const setup = $('panelSetup');
-    const mdi = $('mdiWrap');
-    const gwrap = document.querySelector('.gcode-wrap');
-    const leftActions = document.querySelector('.left-actions');
-    if (currentMode === 'setup') {
-      if (prog) prog.style.display = 'none';
-      if (setup) setup.style.display = 'flex';
-    } else {
-      if (prog) prog.style.display = 'flex';
-      if (setup) setup.style.display = 'none';
-      if (mdi) mdi.style.display = (currentMode === 'mdi') ? 'flex' : 'none';
-      if (gwrap) gwrap.style.display = (currentMode === 'mdi') ? 'none' : 'block';
-      const la = leftActions;
-      if (la) {
-        la.querySelectorAll('button, label').forEach((el) => {
-          el.style.display = (currentMode === 'mdi') ? 'none' : '';
-        });
-      }
-    }
-    updateStatusBar();
-  });
+document.getElementById('modeTabs')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.mode-tab');
+  if (btn) applyMode(btn.dataset.mode);
 });
 
-document.querySelectorAll('.subtab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.subtab').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    const sub = btn.dataset.sub;
-    const panes = ['work', 'tool', 'jog', 'stock'];
-    panes.forEach((p) => {
-      const el = $('setup' + p.charAt(0).toUpperCase() + p.slice(1));
-      if (el) el.style.display = sub === p ? 'flex' : 'none';
-    });
-  });
+document.getElementById('setupSubs')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.subtab');
+  if (btn) applySetupSub(btn.dataset.sub);
 });
 
-document.querySelectorAll('.dro-tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.dro-tab').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    const mode = btn.dataset.dro;
-    if (mode === 'work' || mode === 'machine' || mode === 'operator' || mode === 'dtg') {
-      droMode = mode;
-    }
-    refreshUI();
+document.getElementById('droTabs')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.dro-tab');
+  if (!btn) return;
+  droMode = btn.dataset.dro;
+  document.querySelectorAll('#droTabs .dro-tab').forEach((b) => {
+    b.classList.toggle('active', b === btn);
   });
+  refreshUI();
 });
 
 // WCS table: klik baris = aktifkan; ZERO = touch-off (offset = posisi mesin kini);
@@ -1067,43 +1069,45 @@ if ($('btnJogHome')) {
   });
 }
 
-// Softkeys
-document.querySelectorAll('.sk').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const sk = btn.dataset.sk;
-    if (sk === 'f1') {
-      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
-      document.querySelector('.subtab[data-sub="work"]')?.click();
-      if ($('sbMsg')) $('sbMsg').textContent = 'OFFSET — Work Coordinate System (ZERO = touch-off)';
-    } else if (sk === 'f2') {
-      showCurrentCmds();
-      if ($('sbMsg')) $('sbMsg').textContent = 'CURNT CMDS — ' + machine.activeWcs +
-        ' T' + machine.tool + (machine.hNum ? ' G43 H' + String(machine.hNum).padStart(2, '0') : '') +
-        ' F' + Math.round(machine.feed) + ' S' + (machine.spindleOn ? machine.spindle : 'OFF');
-    } else if (sk === 'f3') {
-      showAlarmPanel();
-      if ($('sbMsg')) $('sbMsg').textContent = alarmHistory.length
-        ? ('ALARM — ' + alarmHistory.length + ' pesan')
-        : 'ALARM — NO ALARMS';
-    } else if (sk === 'f4') {
-      setGraphVisible(!graphVisible);
-    } else if (sk === 'f5') {
-      openTraining();
-    } else if (sk === 'f6') {
-      const on = !machine.coolant;
-      machine.coolant = on;
-      sim.onCoolant(on);
-      if ($('sbMsg')) $('sbMsg').textContent = on ? 'COOLANT ON' : 'COOLANT OFF';
-    } else if (sk === 'f7') {
-      const c = $('chkSingleBlock');
-      if (c) {
-        c.checked = !c.checked;
-        c.dispatchEvent(new Event('change'));
-      }
-    } else if (sk === 'f8') {
-      applyDryRun(!sim.dryRun);
-    }
-  });
+// Softkeys — action registry: CONFIG hanya menyebut nama action; kode di sini.
+function sbMsg(msg) { if ($('sbMsg')) $('sbMsg').textContent = msg; }
+
+const ACTIONS = {
+  'open-offset': () => {
+    applyMode('setup');
+    applySetupSub('work');
+    sbMsg('OFFSET — Work Coordinate System (ZERO = touch-off)');
+  },
+  'current-cmds': () => {
+    showCurrentCmds();
+    sbMsg('CURNT CMDS — ' + machine.activeWcs + ' T' + machine.tool +
+      (machine.hNum ? ' G43 H' + String(machine.hNum).padStart(2, '0') : '') +
+      ' F' + Math.round(machine.feed) + ' S' + (machine.spindleOn ? machine.spindle : 'OFF'));
+  },
+  'alarm': () => {
+    showAlarmPanel();
+    sbMsg(alarmHistory.length ? ('ALARM — ' + alarmHistory.length + ' pesan') : 'ALARM — NO ALARMS');
+  },
+  'graph': () => setGraphVisible(!graphVisible),
+  'training': () => openTraining(),
+  'coolant': () => {
+    const on = !machine.coolant;
+    machine.coolant = on;
+    sim.onCoolant(on);
+    sbMsg(on ? 'COOLANT ON' : 'COOLANT OFF');
+  },
+  'single-block': () => {
+    const c = $('chkSingleBlock');
+    if (c) { c.checked = !c.checked; c.dispatchEvent(new Event('change')); }
+  },
+  'dry-run': () => applyDryRun(!sim.dryRun)
+};
+
+document.getElementById('softkeys')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.sk');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  if (action && ACTIONS[action]) ACTIONS[action]();
 });
 
 if ($('btnTrainClose')) $('btnTrainClose').addEventListener('click', closeTraining);
@@ -1116,24 +1120,24 @@ if ($('btnTrainReset')) $('btnTrainReset').addEventListener('click', resetTraini
 if ($('btnTrainStart')) {
   $('btnTrainStart').addEventListener('click', () => {
     closeTraining();
-    document.querySelector('.mode-tab[data-mode="setup"]')?.click();
+    applyMode('setup');
   });
 }
 document.querySelectorAll('.train-goto').forEach((btn) => {
   btn.addEventListener('click', () => {
     const g = btn.dataset.goto;
     if (g === 'partzero') {
-      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
-      document.querySelector('.subtab[data-sub="work"]')?.click();
+      applyMode('setup');
+      applySetupSub('work');
     } else if (g === 'toollength') {
-      document.querySelector('.mode-tab[data-mode="setup"]')?.click();
-      document.querySelector('.subtab[data-sub="tool"]')?.click();
+      applyMode('setup');
+      applySetupSub('tool');
     } else if (g === 'dryrun') {
       applyDryRun(true);
-      document.querySelector('.mode-tab[data-mode="operation"]')?.click();
+      applyMode('mem');
     } else if (g === 'cyclestart') {
       applyDryRun(false);
-      document.querySelector('.mode-tab[data-mode="operation"]')?.click();
+      applyMode('mem');
     }
   });
 });
@@ -1150,7 +1154,7 @@ window.addEventListener('keydown', (e) => {
     refreshUI();
     return;
   }
-  if (currentMode === 'setup') {
+  if (currentMode === 'jog') {
     const map = {
       ArrowLeft: ['x', -1], ArrowRight: ['x', 1],
       ArrowDown: ['y', -1], ArrowUp: ['y', 1],
@@ -1182,14 +1186,25 @@ function animate(now) {
 }
 
 // ---------- Boot ----------
-document.querySelectorAll('.sk[data-sk="f4"]').forEach((b) => b.classList.add('active'));
-if ($('sk4')) $('sk4').textContent = 'GRAPH ON';
-loadPersistedOffsets();
-syncOffsetInputsFromTables();
-applyStockSetup(true);
-if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
-loadProgram();
-requestAnimationFrame(animate);
+async function boot() {
+  profile = await loadController('./controllers/haas-style.json')
+    .catch(() => normalizeProfile(null));
+  renderModeTabs(profile, profile.default);
+  renderDroTabs(profile, 'work');
+  renderSoftkeys(profile);
+  renderSetupSubs(profile, 'work');
+  applySetupSub('work');
+  applyMode(profile.default);
+  setGraphVisible(true);
+  loadPersistedOffsets();
+  syncOffsetInputsFromTables();
+  applyStockSetup(true);
+  if ($('gcodeInput')) $('gcodeInput').value = SAMPLE;
+  loadProgram();
+  applyMode(profile.default);
+  requestAnimationFrame(animate);
+}
+boot();
 
 // MDI handlers
 if ($('btnMdiRun')) {
@@ -1214,21 +1229,3 @@ if ($('btnMdiClear')) {
     if ($('mdiInput')) $('mdiInput').value = '';
   });
 }
-
-// Load controller profile (data-driven panel)
-async function loadControllerProfile() {
-  try {
-    const res = await fetch('./src/controllers/haas-style.json');
-    const cfg = await res.json();
-    // Apply softkey labels if present
-    if (cfg.softkeyLabels) {
-      for (let i = 1; i <= 8; i++) {
-        const el = $('sk' + i);
-        if (el && cfg.softkeyLabels[i]) el.textContent = cfg.softkeyLabels[i];
-      }
-    }
-  } catch (e) {
-    // ignore
-  }
-}
-loadControllerProfile();
