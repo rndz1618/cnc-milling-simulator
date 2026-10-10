@@ -1,4 +1,4 @@
-# CNC Milling Simulator v0.9.3 — Training
+# CNC Milling Simulator v0.10.0 — Training
 
 Modular web CNC milling trainer with voxel material removal and Haas-style control panel.
 
@@ -6,6 +6,7 @@ Modular web CNC milling trainer with voxel material removal and Haas-style contr
 
 | Rev | Version | Notes |
 |-----|---------|-------|
+| — | 0.10.0 | UI shell data-driven: tab mode (EDIT/MEM/MDI/JOG/SETUP), softkey & DRO dirender dari controller profile JSON; action registry (config vs code) |
 | — | 0.9.3 | Fix: CURNT CMDS kini **live** saat program berjalan (G0/G1/G2/G3 diteruskan parser→simulator→panel) |
 | — | 0.9.2 | Halaman CURNT CMDS (F2) — daftar kode G/M aktif; softkey label dari controller profile JSON |
 | — | 0.9.1 | DRO 4 mode (WORK/MACHINE/OPERATOR/DTG), tab MDI, controller profile JSON (data-driven awal) |
@@ -40,7 +41,7 @@ Do **not** open via `file://`.
 
 - **Space** — Cycle Start / Feed Hold
 - **F1–F8** — Soft keys
-- **Arrow / PgUp / PgDn** — Jog (SETUP)
+- **Arrow / PgUp / PgDn** — Jog (mode JOG)
 
 ## Training flow
 
