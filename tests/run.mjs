@@ -384,6 +384,47 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(sim.index >= sim.moves.length, 'resume: menyelesaikan seluruh move');
 }
 
+// ---------- Tahap 6: regresi stream comp + dwell di Simulator ----------
+{
+  const machine = createMachineState();
+  const stock = new VoxelStock({ sizeX: 100, sizeY: 100, sizeZ: 20, res: 2, originX: 0, originY: 0, originZ: -20 });
+  stock.updateMesh({ add() {}, remove() {}, traverse() {} }, true);
+  const mkSim = () => {
+    const s = new Simulator({
+      stock, machine: createMachineState(), onUpdate() {}, onLine() {}, onMessage() {},
+      onAlarm() {}, onTool() {}, onToolComp() {}, onCoolant() {}
+    });
+    s.dryRun = true;
+    return s;
+  };
+  const runAll = (sim) => { sim.play(); let g = 0; while (sim.playing && g++ < 100000) sim.tick(0.05); return g; };
+
+  // C1: entry comp tak boleh dieksekusi sebagai gerak (dulu → NaN).
+  const comped = applyCutterComp(
+    parseGCode('G0 X-5\nG41 D1\nG1 X10\nG1 X10 Y10\nG40\nM30').moves,
+    { getRadius: () => 3 }
+  );
+  const simC = mkSim();
+  simC.loadMoves(comped, 0);
+  runAll(simC);
+  ok([simC.machine.x, simC.machine.y, simC.machine.z].every(Number.isFinite), 'comp: koordinat tetap finite (tanpa NaN)');
+  ok(simC.state === 'done', 'comp: program selesai');
+
+  // C2: dwell lalu stop — dulu M30 dieksekusi sebagai gerak → NaN.
+  const simD = mkSim();
+  simD.loadMoves(parseGCode('G4 P0.3\nM30').moves, 0);
+  runAll(simD);
+  ok([simD.machine.x, simD.machine.y, simD.machine.z].every(Number.isFinite), 'dwell+end: koordinat finite');
+  ok(simD.state === 'done', 'dwell+end: selesai');
+
+  // C2b: dwell lalu M00 harus tetap berhenti di M00 (bukan dilewati).
+  const simE = mkSim();
+  simE.loadMoves(parseGCode('G4 P0.2\nM00\nG0 X5\nM30').moves, 0);
+  simE.play();
+  for (let i = 0; i < 50; i++) simE.tick(0.05);
+  ok(simE.state === 'hold', 'dwell lalu M00: berhenti di M00');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {

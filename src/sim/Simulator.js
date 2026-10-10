@@ -172,6 +172,11 @@ export class Simulator {
         this.index++;
         continue;
       }
+      if (e.type === 'comp') {
+        // Metadata cutter comp; geometri sudah diterapkan di Compensator.
+        this.index++;
+        continue;
+      }
       if (e.type === 'alarm') {
         this.alarm(e.msg, e.line);
         return false;
@@ -207,8 +212,11 @@ export class Simulator {
 
   step() {
     if (this.state === 'alarm') return;
-    if (!this._advanceEntries()) return;
-    if (this.timer > 0) {
+    // Konsumsi timer (dwell/ATC) instan; ulangi karena entri setelah timer bisa
+    // non-gerak lagi (dwell lain, stop, alarm) — jangan eksekusi entry itu sebagai gerak.
+    while (true) {
+      if (!this._advanceEntries()) return;
+      if (!(this.timer > 0)) break;
       if (this.timerKind === 'dwell') this.elapsed += this.timer;
       this.timer = 0;
       this.timerKind = null;
@@ -254,6 +262,10 @@ export class Simulator {
       }
       this.timer = 0;
       this.timerKind = null;
+      // Setelah timer habis, entri berikut bisa non-gerak (dwell/tool/stop/alarm):
+      // konsumsi dulu, dan tahan bila ternyata timer lain — jangan eksekusi sebagai gerak.
+      if (!this._advanceEntries()) { this.onUpdate(); return; }
+      if (this.timer > 0) { this.onUpdate(); return; }
     }
     if (this.index >= this.moves.length) {
       this.playing = false;
