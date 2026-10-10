@@ -441,6 +441,23 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(simE.state === 'hold', 'dwell lalu M00: berhenti di M00');
 }
 
+// ---------- Tahap 7: model fixture ----------
+{
+  const { makeFixture, stockOriginFor, migrateLegacyStock, normalizeFixtures, materialColor, MATERIALS } =
+    await import('../src/machine/Fixtures.js');
+  const f = makeFixture({ wcs: 'G54', stock: { sizeX: 120, sizeY: 60, sizeZ: 30 }, placement: 'top-center' });
+  const o = stockOriginFor(f, { x: 0, y: -90, z: 0 });
+  eq({ x: o.x, y: o.y, z: o.z }, { x: -60, y: -120, z: -30 }, 'Fixtures: top-center origin');
+  const corner = makeFixture({ stock: { sizeX: 80, sizeY: 60, sizeZ: 20 }, placement: 'top-corner' });
+  eq(stockOriginFor(corner, { x: 10, y: 20, z: 30 }), { x: 10, y: 20, z: 10 }, 'Fixtures: top-corner origin');
+  const fx = migrateLegacyStock({ sizeX: 80, sizeY: 60, sizeZ: 20, placement: 'top-corner', originX: 1, originY: 2, originZ: 3 });
+  eq(fx.length, 1); eq(fx[0].wcs, 'G54');
+  const norm = normalizeFixtures([{ wcs: 'G60' }, { wcs: 'G54' }, { wcs: 'G54' }]);
+  eq(norm.length, 1); eq(norm[0].wcs, 'G54');
+  eq(materialColor('alum'), MATERIALS.alum.color);
+  eq(materialColor('xyz'), MATERIALS.alum.color);
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
