@@ -30,6 +30,18 @@ function ok(cond, label) {
   else { fail++; failures.push(label); }
 }
 
+function close(actual, expected, tol, label) {
+  const a = JSON.stringify(actual);
+  const e = JSON.stringify(expected);
+  const okLen = actual.length === expected.length;
+  const within = actual.every((v, i) => Math.abs(v - expected[i]) <= tol);
+  if (okLen && within) { pass++; }
+  else {
+    fail++;
+    failures.push(label + '\n    expected: ' + e + '\n    actual:   ' + a);
+  }
+}
+
 // ---------- Golden: O20018 ----------
 const O20018 = `%
 O20018
@@ -271,6 +283,19 @@ const compDefault = parseGCode('T3 M6\nG41\nG1 X5 F100\nM30');
 eq(compDefault.moves.find((m) => m.type === 'comp').d, 3, 'G41 tanpa D → default tool aktif');
 const compPlane = parseGCode('G18 G41 D1\nG1 X5 F100\nM30');
 ok(compPlane.alarms.some((a) => a.code === 'G41'), 'G41 di plane G18 → alarm');
+
+// ---------- Tahap 6: Compensator ----------
+const { applyCutterComp } = await import('../src/machine/Compensator.js');
+const compProgram = parseGCode('T1 M6\nG0 X-5 Y0\nG41 D1\nG1 X10 F100\nG1 X10 Y10\nG40\nM30');
+const comped = applyCutterComp(compProgram.moves || [], { getRadius: () => 3 });
+const compedMotion = comped.filter((m) => m.type === 'rapid' || m.type === 'feed');
+eq(compedMotion.length, 3, 'Comp: 3 motion (rapid + 2 feed)');
+close(compedMotion.map((m) => m.x), [-5, 7, 7], 1e-6, 'Comp left: X offset (lead-in & miter)');
+close(compedMotion.map((m) => m.y), [0, 3, 10], 1e-6, 'Comp left: Y offset');
+const plainProgram = parseGCode('T1 M6\nG0 X-5 Y0\nG1 X10 F100\nG1 X10 Y10\nG1 Y0 F100\nM30');
+const plainComped = applyCutterComp(plainProgram.moves || [], { getRadius: () => 3 });
+eq(plainComped.filter((m) => m.type === 'rapid' || m.type === 'feed').map((m) => [m.x, m.y]),
+  [[-5, 0], [10, 0], [10, 10], [10, 0]], 'Comp non-aktif → path identik');
 
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);

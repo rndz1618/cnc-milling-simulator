@@ -3,6 +3,7 @@
 import { VoxelStock } from './stock/VoxelStock.js';
 import { boundsFromPoints, formatStockSize } from './stock/fitStock.js';
 import { parseGCode } from './machine/Parser.js';
+import { applyCutterComp } from './machine/Compensator.js';
 import {
   createMachineState,
   workCoords,
@@ -711,7 +712,9 @@ function applySetupSub(sub) {
 function loadProgram() {
   const text = ($('gcodeInput') && $('gcodeInput').value) || SAMPLE;
   const parsed = parseGCode(text);
-  allMoves = parsed.moves || [];
+  allMoves = applyCutterComp(parsed.moves || [], {
+    getRadius: (d) => (toolTable[d]?.dia ?? 6) / 2
+  });
   sim.loadMoves(allMoves, parsed.totalTime || 0);
   computeMachineMoves();
 
