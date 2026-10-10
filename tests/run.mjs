@@ -318,6 +318,16 @@ eq(dw.moves.find((m) => m.type === 'dwell')?.p, 1.5, 'G4 P1.5 → dwell p=1.5');
 const dw0 = parseGCode('G4\nG0 X5\nM30');
 eq(dw0.moves.find((m) => m.type === 'dwell')?.p, 0, 'G4 tanpa P → dwell p=0');
 
+// ---------- Tahap 6: G84 tapping ----------
+const tap = parseGCode('G0 X0 Y0 Z0\nG84 X5 Y5 Z-10 R2 F100\nM30');
+const tapMoves = tap.moves.filter((m) => m.type === 'feed');
+ok(!tap.alarms.length, 'G84: tanpa alarm');
+eq(tapMoves[0].spindleDir, 3, 'G84: feed masuk spindleDir 3');
+eq(tapMoves[tapMoves.length - 1].spindleDir, 4, 'G84: feed keluar spindleDir 4 (balik)');
+eq(tapMoves[tapMoves.length - 1].z, 2, 'G84: keluar ke level R (G99)');
+const tapQ = parseGCode('G84 X5 Y5 Z-10 R2 Q1 F100\nM30');
+ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {

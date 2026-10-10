@@ -97,7 +97,7 @@ function parseAxisNum(numStr) {
 
 const KNOWN_G = new Set([
   0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 28, 40, 41, 42, 43, 49, 53,
-  54, 55, 56, 57, 58, 59, 80, 81, 82, 83, 90, 91, 98, 99
+  54, 55, 56, 57, 58, 59, 80, 81, 82, 83, 84, 90, 91, 98, 99
 ]);
 const KNOWN_M = new Set([0, 1, 3, 4, 5, 6, 8, 9, 30, 97, 99]);
 
@@ -247,7 +247,11 @@ function blocksToMoves(blocks) {
       } else if (g === 53) sawG53 = true;
       else if (g >= 54 && g <= 59) wcs = 'G' + g;
       else if (g === 80) cycle = null;
-      else if (g === 81 || g === 82 || g === 83) {
+      else if (g === 81 || g === 82 || g === 83 || g === 84) {
+        if (g === 84 && nq != null) {
+          blockAlarm = { code: 'G84', msg: 'G84 TANPA PECK', line: blk.lineNum };
+          break;
+        }
         sawCycleWord = true;
         cycle = { g, z: nz, r: nr, q: nq, f: nf != null ? nf : f };
       } else if (g === 90) absolute = true;
@@ -402,6 +406,12 @@ function expandCycleHole(moves, cycle, retract, x0, y0, z0, hx, hy, meta) {
   // 4. keluar ke level retract
   const out = retract === 'G98' ? z0 : cycle.r;
   if (Math.abs(out - cycle.z) > 1e-9) {
-    moves.push({ x: hx, y: hy, z: out, type: 'rapid', ...meta() });
+    if (cycle.g === 84) {
+      const rev = meta();
+      rev.spindleDir = rev.spindleDir === 3 ? 4 : 3;
+      moves.push({ x: hx, y: hy, z: out, type: 'feed', ...rev, f });
+    } else {
+      moves.push({ x: hx, y: hy, z: out, type: 'rapid', ...meta() });
+    }
   }
 }
