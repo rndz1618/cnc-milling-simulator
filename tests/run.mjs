@@ -471,6 +471,27 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(t.checkContact('x-', 3, { x: -60 }, { axis: 'x', value: -50 }) === false);
 }
 
+// ---------- Tahap 7: multi-stok (resolveStock) ----------
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const { Simulator } = await import('../src/sim/Simulator.js');
+  const { FixtureManager } = await import('../src/sim/FixtureManager.js');
+  const { makeFixture } = await import('../src/machine/Fixtures.js');
+  const A = new VoxelStock({ sizeX: 60, sizeY: 40, sizeZ: 10, res: 2, originX: 0, originY: 0, originZ: -10 });
+  const B = new VoxelStock({ sizeX: 60, sizeY: 40, sizeZ: 10, res: 2, originX: 0, originY: -90, originZ: -10 });
+  const res = (wcs) => (wcs === 'G55' ? B : A);
+  const sim = new Simulator({ stock: A, machine: createMachineState(), resolveStock: res, onResetStocks: () => { A.reset(); B.reset(); } });
+  const before = A.remainingRatio;
+  sim.loadMoves(parseGCode('G00 G90 G54 X5 Y5 Z0\nG01 Z-5 F100\nG01 X15\nG00 Z5\nG55 X5 Y5 Z0\nG01 Z-5\nG01 X15').moves);
+  let g = 0;
+  while (sim.index < sim.moves.length && g++ < 100000) sim.step();
+  ok(A.remainingRatio < before && B.remainingRatio < before, 'dua stok terpotong');
+  ok(Math.abs(A.remainingRatio - B.remainingRatio) < 0.05, 'potongan simetris dua stok');
+  const mgr = new FixtureManager({ scene: null, machine: createMachineState() });
+  mgr.build([makeFixture({ wcs: 'G54' })]);
+  ok(mgr.stockFor('G57') === null, 'stockFor WCS tanpa fixture → null');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {

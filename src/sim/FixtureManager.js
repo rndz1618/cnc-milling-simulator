@@ -1,0 +1,118 @@
+import { VoxelStock } from '../stock/VoxelStock.js';
+import { stockOriginFor } from '../machine/Fixtures.js';
+import { wcsOffset } from '../machine/MachineState.js';
+
+export class FixtureManager {
+  constructor({ scene = null, machine, createVise = null } = {}) {
+    this.scene = scene;
+    this.machine = machine;
+    this.createVise = createVise;
+    this.entries = [];
+    this.byWcs = new Map();
+  }
+
+  build(fixtures) {
+    this.dispose();
+    for (const fixture of fixtures || []) {
+      const origin = stockOriginFor(fixture, wcsOffset(this.machine, fixture.wcs));
+      const s = fixture.stock;
+      const stock = new VoxelStock({
+        sizeX: s.sizeX, sizeY: s.sizeY, sizeZ: s.sizeZ,
+        originX: origin.x, originY: origin.y, originZ: origin.z
+      });
+      let vise = null;
+      if (this.scene) {
+        stock.updateMesh(this.scene, true);
+        if (this.createVise) {
+          vise = this.createVise({
+            spanX: s.sizeX + 10,
+            yMin: origin.y,
+            yMax: origin.y + s.sizeY,
+            topZ: origin.z
+          });
+          vise.position.x = origin.x + s.sizeX / 2;
+          this.scene.add(vise);
+        }
+      }
+      const entry = { fixture, stock, vise, origin };
+      this.entries.push(entry);
+      this.byWcs.set(fixture.wcs, entry);
+    }
+    return this;
+  }
+
+  stockFor(wcs) {
+    const e = this.byWcs.get(wcs);
+    return e ? e.stock : null;
+  }
+
+  fixtureFor(wcs) {
+    const e = this.byWcs.get(wcs);
+    return e ? e.fixture : null;
+  }
+
+  stocks() {
+    return this.entries.map((e) => e.stock);
+  }
+
+  reset() {
+    for (const e of this.entries) {
+      e.stock.reset();
+      e.stock._dirty = true;
+    }
+  }
+
+  setVisible(v) {
+    for (const e of this.entries) {
+      if (e.stock.mesh) e.stock.mesh.visible = v;
+      if (e.vise) e.vise.visible = v;
+    }
+  }
+
+  get remainingRatio() {
+    let tv = 0, acc = 0;
+    for (const e of this.entries) {
+      const s = e.stock;
+      const vol = s.sizeX * s.sizeY * s.sizeZ;
+      tv += vol;
+      acc += vol * s.remainingRatio;
+    }
+    if (tv > 0) return acc / tv;
+    if (!this.entries.length) return 1;
+    return this.entries.reduce((a, e) => a + e.stock.remainingRatio, 0) / this.entries.length;
+  }
+
+  frameBounds() {
+    if (!this.entries.length) return null;
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+    for (const { stock } of this.entries) {
+      xMin = Math.min(xMin, stock.originX);
+      xMax = Math.max(xMax, stock.originX + stock.sizeX);
+      yMin = Math.min(yMin, stock.originY);
+      yMax = Math.max(yMax, stock.originY + stock.sizeY);
+      zMin = Math.min(zMin, stock.originZ);
+      zMax = Math.max(zMax, stock.originZ + stock.sizeZ);
+    }
+    return {
+      x: (xMin + xMax) / 2,
+      y: (yMin + yMax) / 2,
+      z: (zMin + zMax) / 2,
+      span: Math.max(xMax - xMin, yMax - yMin, (zMax - zMin) * 2)
+    };
+  }
+
+  rebuild() {
+    return this.build(this.entries.map((e) => e.fixture));
+  }
+
+  dispose() {
+    for (const e of this.entries) {
+      if (this.scene) {
+        if (e.stock.mesh) this.scene.remove(e.stock.mesh);
+        if (e.vise) this.scene.remove(e.vise);
+      }
+    }
+    this.entries = [];
+    this.byWcs = new Map();
+  }
+}

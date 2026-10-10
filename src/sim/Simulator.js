@@ -22,9 +22,13 @@ export class Simulator {
     onTool,
     onToolComp,
     onCoolant,
-    onMessage
+    onMessage,
+    resolveStock,
+    onResetStocks
   }) {
     this.stock = stock;
+    this.resolveStock = resolveStock || null;
+    this.onResetStocks = onResetStocks || null;
     this.machine = machine;
     this.onUpdate = onUpdate || (() => {});
     this.onLine = onLine || (() => {});
@@ -49,6 +53,18 @@ export class Simulator {
     this.holdReason = null;
     this.timer = 0;
     this.timerKind = null;
+  }
+
+  _stockFor(m) {
+    return this.resolveStock ? this.resolveStock(m.wcs || this.machine.activeWcs) : this.stock;
+  }
+
+  _resetStocks() {
+    if (this.onResetStocks) this.onResetStocks();
+    else if (this.stock) {
+      this.stock.reset();
+      this.stock._dirty = true;
+    }
   }
 
   loadMoves(moves, totalTime = 0) {
@@ -82,8 +98,7 @@ export class Simulator {
     this.timerKind = null;
     this.holdReason = null;
     this._homeMachine();
-    this.stock.reset();
-    this.stock._dirty = true;
+    this._resetStocks();
     this.onLine(null);
     this.onUpdate();
   }
@@ -107,8 +122,7 @@ export class Simulator {
     this.holdReason = null;
     if (!this.moves.length) return;
     if (this.index >= this.moves.length) {
-      this.stock.reset();
-      this.stock._dirty = true;
+      this._resetStocks();
       this.index = 0;
       this.progress = 0;
       this.elapsed = 0;
@@ -235,7 +249,8 @@ export class Simulator {
     this._applyMeta(m);
     if (!this.dryRun) {
       if (m.type === 'feed') {
-        this.stock.cutSegment(prev.x, prev.y, prev.z, target.x, target.y, target.z,
+        const st = this._stockFor(m);
+        if (st) st.cutSegment(prev.x, prev.y, prev.z, target.x, target.y, target.z,
           (this.machine.toolDiameter || 12) / 2);
       } else if (m.type === 'rapid') {
         this._checkRapidCrash(prev, target, m);
@@ -315,7 +330,8 @@ export class Simulator {
     };
 
     if (!this.dryRun && m.type === 'feed') {
-      this.stock.cutSegment(prev.x, prev.y, prev.z, now.x, now.y, now.z,
+      const st = this._stockFor(m);
+      if (st) st.cutSegment(prev.x, prev.y, prev.z, now.x, now.y, now.z,
         (this.machine.toolDiameter || 12) / 2);
     }
 
@@ -400,6 +416,8 @@ export class Simulator {
    * lalu alarm + halt.
    */
   _checkRapidCrash(p0, p1, m) {
+    const st = this._stockFor(m);
+    if (!st) return false;
     const dist = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2 + (p1.z - p0.z) ** 2);
     if (dist < 1e-6) return false;
     const r = (this.machine.toolDiameter || 12) / 2;
@@ -409,7 +427,7 @@ export class Simulator {
       const a = (Math.PI * 2 * k) / 6;
       ring.push([Math.cos(a) * ringR, Math.sin(a) * ringR]);
     }
-    const step = Math.max((this.stock.res || 1) * 0.5, 0.5);
+    const step = Math.max((st.res || 1) * 0.5, 0.5);
     const n = Math.max(1, Math.ceil(dist / step));
     for (let s = 1; s <= n; s++) {
       const t = s / n;
@@ -417,8 +435,8 @@ export class Simulator {
       const py = p0.y + (p1.y - p0.y) * t;
       const pz = p0.z + (p1.z - p0.z) * t;
       for (const [ox, oy] of ring) {
-        if (this.stock.pointInStock(px + ox, py + oy, pz)) {
-          this.stock.cutSegment(p0.x, p0.y, p0.z, px, py, pz, r);
+        if (st.pointInStock(px + ox, py + oy, pz)) {
+          st.cutSegment(p0.x, p0.y, p0.z, px, py, pz, r);
           this.alarm('RAPID CRASH — G00 MENABRAK MATERIAL (baris ' + m.line + ')', m.line);
           return true;
         }
