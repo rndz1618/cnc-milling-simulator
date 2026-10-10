@@ -223,7 +223,8 @@ function blocksToMoves(blocks) {
       if (g === 0 || g === 1 || g === 2 || g === 3) {
         motion = g; group1 = true; cycle = null;
       } else if (g === 4) {
-        // dwell: P detik — tidak menggerakkan apa pun
+        const p = np != null ? np : (nx != null ? nx : 0);
+        moves.push({ type: 'dwell', p, line: blk.lineNum, raw: blk.raw.trim() });
       } else if (g === 17 || g === 18 || g === 19) {
         plane = g;
       } else if (g === 20) units = 'in';

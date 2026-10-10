@@ -312,6 +312,12 @@ const mid19 = segsOf(g19).reduce((a, b) => (Math.abs(b.y) > Math.abs(a.y) ? b : 
 ok(Math.abs(Math.abs(mid19.y) - 5) < 1e-6 && Math.abs(mid19.z - 5) < 1e-6, 'G19: tengah Y±5 Z5');
 ok(segsOf(g19).every((s) => Math.abs(s.x - 2) < 1e-9), 'G19: X tetap 2');
 
+// ---------- Tahap 6: G4 dwell ----------
+const dw = parseGCode('G4 P1.5\nG0 X5\nM30');
+eq(dw.moves.find((m) => m.type === 'dwell')?.p, 1.5, 'G4 P1.5 → dwell p=1.5');
+const dw0 = parseGCode('G4\nG0 X5\nM30');
+eq(dw0.moves.find((m) => m.type === 'dwell')?.p, 0, 'G4 tanpa P → dwell p=0');
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
