@@ -328,6 +328,34 @@ eq(tapMoves[tapMoves.length - 1].z, 2, 'G84: keluar ke level R (G99)');
 const tapQ = parseGCode('G84 X5 Y5 Z-10 R2 Q1 F100\nM30');
 ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
 
+// ---------- Tahap 6: dwell + ATC timer ----------
+{
+  const machine = createMachineState();
+  const stock = new VoxelStock({ sizeX: 100, sizeY: 100, sizeZ: 20, res: 2, originX: 0, originY: 0, originZ: -20 });
+  stock.updateMesh({ add() {}, remove() {}, traverse() {} }, true);
+  const sim = new Simulator({
+    stock, machine, onUpdate() {}, onLine() {}, onMessage() {},
+    onAlarm() {}, onTool() {}, onToolComp() {}, onCoolant() {}
+  });
+  sim.dryRun = true;
+  const tools = [];
+  const sim2 = new Simulator({
+    stock, machine, onUpdate() {}, onLine() {}, onMessage() {},
+    onAlarm() {}, onTool: (t) => tools.push(t), onToolComp() {}, onCoolant() {}
+  });
+  sim2.dryRun = true;
+  sim.loadMoves(parseGCode('G4 P0.2\nG0 X10\nM30').moves, 0);
+  sim.play();
+  ok(sim.timerKind === 'dwell' && sim.timer > 0, 'dwell: play memicu timer');
+  let g = 0;
+  while (sim.playing && g++ < 1000) sim.tick(0.05);
+  ok(sim.state === 'done', 'dwell: selesai setelah waktu habis');
+  ok(sim.elapsed >= 0.2 - 1e-6, 'dwell: elapsed menghitung durasi');
+  sim2.loadMoves(parseGCode('T2 M6\nG0 X5\nM30').moves, 0);
+  sim2.play();
+  ok(sim2.timerKind === 'atc' && tools[0] === 2, 'ATC: M6 memicu timer + onTool');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {

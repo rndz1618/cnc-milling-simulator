@@ -9,6 +9,9 @@
  */
 import { moveTarget, outOfTravel, MACHINE_PROFILE, wcsOffset } from '../machine/MachineState.js';
 
+/** Waktu ganti tool (ATC) dalam detik simulasi. */
+const ATC_TIME = 1.0;
+
 export class Simulator {
   constructor({
     stock,
@@ -43,6 +46,8 @@ export class Simulator {
     this.simSpeed = 1;
     this.feedOvr = 1;
     this.rapidOvr = 1;
+    this.timer = 0;
+    this.timerKind = null;
   }
 
   loadMoves(moves, totalTime = 0) {
@@ -57,6 +62,8 @@ export class Simulator {
     this.elapsed = 0;
     this.playing = false;
     this.state = 'idle';
+    this.timer = 0;
+    this.timerKind = null;
     this._homeMachine();
     this.onLine(null);
     this.onUpdate();
@@ -69,6 +76,8 @@ export class Simulator {
     this.index = 0;
     this.progress = 0;
     this.elapsed = 0;
+    this.timer = 0;
+    this.timerKind = null;
     this._homeMachine();
     this.stock.reset();
     this.stock._dirty = true;
@@ -129,6 +138,18 @@ export class Simulator {
       if (e.type === 'tool') {
         this.onTool(e.tool);
         if (this.state === 'alarm') return false;
+        this.timer = ATC_TIME;
+        this.timerKind = 'atc';
+        this.index++;
+        return true;
+      }
+      if (e.type === 'dwell') {
+        if (e.p > 0) {
+          this.timer = e.p;
+          this.timerKind = 'dwell';
+          this.index++;
+          return true;
+        }
         this.index++;
         continue;
       }
@@ -180,6 +201,11 @@ export class Simulator {
   step() {
     if (this.state === 'alarm') return;
     if (!this._advanceEntries()) return;
+    if (this.timer > 0) {
+      if (this.timerKind === 'dwell') this.elapsed += this.timer;
+      this.timer = 0;
+      this.timerKind = null;
+    }
     if (this.index >= this.moves.length) return;
     const m = this.moves[this.index];
     const target = moveTarget(m, this.machine);
@@ -212,6 +238,16 @@ export class Simulator {
 
   tick(dt) {
     if (!this.playing) return;
+    if (this.timer > 0) {
+      this.timer -= dt * this.simSpeed;
+      if (this.timerKind === 'dwell') this.elapsed += dt * this.simSpeed;
+      if (this.timer > 0) {
+        this.onUpdate();
+        return;
+      }
+      this.timer = 0;
+      this.timerKind = null;
+    }
     if (this.index >= this.moves.length) {
       this.playing = false;
       this.state = 'done';
