@@ -1,9 +1,10 @@
 // v0.9.0 — mesin koordinat mesin (Tahap 1+3+2)
 // Semua posisi = koordinat MESIN. DRO WORK = machine − offset WCS.
-import { VoxelStock } from './stock/VoxelStock.js';
 import { boundsFromPoints, formatStockSize } from './stock/fitStock.js';
 import { parseGCode } from './machine/Parser.js';
 import { applyCutterComp } from './machine/Compensator.js';
+import { makeFixture } from './machine/Fixtures.js';
+import { FixtureManager } from './sim/FixtureManager.js';
 import {
   createMachineState,
   workCoords,
@@ -81,20 +82,22 @@ M30
 const container = document.getElementById('canvas-container');
 const { scene, camera, renderer, controls, bed, grid } = createScene(container);
 
-// ---------- Stock (ruang mesin) ----------
-const stock = new VoxelStock({
-  sizeX: 100, sizeY: 80, sizeZ: 20, res: 1.0,
-  originX: -50, originY: -40, originZ: -20
-});
-stock.updateMesh(scene, true);
-
+// ---------- Stock setup (fixture G54 default) ----------
 const stockSetup = {
   placement: 'top-center', // 'top-center' | 'top-corner' | 'custom'
   sizeX: 100, sizeY: 80, sizeZ: 20,
   originX: -50, originY: -40, originZ: -20
 };
 
-let viseGroup = null;
+function fixtureFromStockSetup() {
+  return makeFixture({
+    wcs: 'G54', name: 'Ragum 1',
+    stock: { sizeX: stockSetup.sizeX, sizeY: stockSetup.sizeY, sizeZ: stockSetup.sizeZ },
+    placement: stockSetup.placement,
+    offset: { x: stockSetup.originX, y: stockSetup.originY, z: stockSetup.originZ }
+  });
+}
+
 let wcsMarkersGroup = null;
 
 // ---------- Tool ----------
@@ -109,6 +112,9 @@ const toolTable = {
 
 // ---------- State ----------
 const machine = createMachineState();
+const fixtures = new FixtureManager({ scene, machine, createVise });
+fixtures.build([fixtureFromStockSetup()]);
+let stock = fixtures.stockFor('G54');
 let activeTool = 1;
 let droMode = 'work';
 let jogInc = 0.1;
@@ -322,6 +328,8 @@ function applyToolFromTable(toolNum) {
 const sim = new Simulator({
   stock,
   machine,
+  resolveStock: (wcs) => fixtures.stockFor(wcs),
+  onResetStocks: () => fixtures.reset(),
   onUpdate: refreshUI,
   onLine: highlightLine,
   onAlarm: (msg, line) => {
@@ -424,65 +432,27 @@ function rebuildWcsMarkers() {
   scene.add(wcsMarkersGroup);
 }
 
-function rebuildVise() {
-  disposeGroup(viseGroup);
-  viseGroup = createVise({
-    spanX: stock.sizeX + 10,
-    yMin: stock.originY,
-    yMax: stock.originY + stock.sizeY,
-    topZ: stock.originZ
-  });
-  viseGroup.position.x = stock.originX + stock.sizeX / 2;
-  scene.add(viseGroup);
-}
-
 function frameStock() {
-  const cx = stock.originX + stock.sizeX / 2;
-  const cy = stock.originY + stock.sizeY / 2;
-  const cz = stock.originZ + stock.sizeZ / 2;
-  const span = Math.max(stock.sizeX, stock.sizeY, stock.sizeZ * 2);
-  controls.target.set(cx, cz, cy);
-  camera.position.set(cx + span * 0.9, cz + span * 0.7, cy + span * 1.1);
+  const b = fixtures.frameBounds();
+  if (!b) return;
+  controls.target.set(b.x, b.z, b.y);
+  camera.position.set(b.x + b.span * 0.9, b.z + b.span * 0.7, b.y + b.span * 1.1);
   controls.update();
 }
 
 // ---------- Stock setup ----------
 function applyStockSetup(fitToView = true) {
-  const g54 = machine.wcs.G54;
-  let ox, oy, oz;
-  if (stockSetup.placement === 'top-center') {
-    ox = g54.x - stockSetup.sizeX / 2;
-    oy = g54.y - stockSetup.sizeY / 2;
-    oz = g54.z - stockSetup.sizeZ;
-  } else if (stockSetup.placement === 'top-corner') {
-    ox = g54.x;
-    oy = g54.y;
-    oz = g54.z - stockSetup.sizeZ;
-  } else {
-    ox = stockSetup.originX;
-    oy = stockSetup.originY;
-    oz = stockSetup.originZ;
-  }
-  stockSetup.originX = ox;
-  stockSetup.originY = oy;
-  stockSetup.originZ = oz;
-  stock.resize({
-    sizeX: stockSetup.sizeX,
-    sizeY: stockSetup.sizeY,
-    sizeZ: stockSetup.sizeZ,
-    originX: ox, originY: oy, originZ: oz
-  }, scene);
-  stock.reset();
-  stock.updateMesh(scene, true);
-  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
-  rebuildVise();
+  fixtures.build([fixtureFromStockSetup()]);
+  stock = fixtures.stockFor('G54');
+  fixtures.setVisible(!sim.dryRun);
   syncStockPlacementInputs();
   if ($('stockSizeLabel')) {
     $('stockSizeLabel').textContent = Math.round(stockSetup.sizeX) + '\u00d7' +
       Math.round(stockSetup.sizeY) + '\u00d7' + Math.round(stockSetup.sizeZ);
   }
   if ($('stockInfo')) {
-    $('stockInfo').textContent = 'origin mesin: ' + ox.toFixed(1) + ', ' + oy.toFixed(1) + ', ' + oz.toFixed(1);
+    $('stockInfo').textContent = 'origin mesin: ' + stock.originX.toFixed(1) + ', ' +
+      stock.originY.toFixed(1) + ', ' + stock.originZ.toFixed(1);
   }
   if (fitToView) frameStock();
   refreshUI();
@@ -509,7 +479,7 @@ function applyDryRun(on) {
   });
   const lbl = $('sk8');
   if (lbl) lbl.textContent = on ? 'DRY ON' : 'DRY RUN';
-  if (stock.mesh) stock.mesh.visible = !on;
+  fixtures.setVisible(!on);
   if ($('sbMsg')) $('sbMsg').textContent = on ? 'DRY RUN — material hidden' : 'DRY RUN OFF';
   updateStatusBar();
 }
@@ -604,7 +574,7 @@ function refreshUI() {
     $('simTool').textContent = 'T' + (machine.tool || 1) + ' Ø' + (machine.toolDiameter || 6);
   }
   if ($('stockLeft')) {
-    $('stockLeft').textContent = Math.round(stock.remainingRatio * 100) + '%';
+    $('stockLeft').textContent = Math.round(fixtures.remainingRatio * 100) + '%';
   }
 
   const pct = sim.moves.length ? Math.min(100, (sim.index / sim.moves.length) * 100) : 0;
@@ -827,7 +797,7 @@ if ($('btnStop')) $('btnStop').addEventListener('click', () => {
   disposeGroup(trailGroup);
   trailGroup = null;
   if (toolpathGroup) toolpathGroup.visible = graphVisible;
-  if (stock.mesh) stock.mesh.visible = !sim.dryRun;
+  fixtures.setVisible(!sim.dryRun);
   refreshUI();
 });
 if ($('btnStep')) $('btnStep').addEventListener('click', () => { sim.step(); refreshUI(); });
@@ -874,16 +844,10 @@ sim.simSpeed = 1;
 
 if ($('btnResetView')) $('btnResetView').addEventListener('click', frameStock);
 if ($('btnTopView')) $('btnTopView').addEventListener('click', () => {
-  camera.position.set(
-    stock.originX + stock.sizeX / 2,
-    stock.originZ + Math.max(stock.sizeX, stock.sizeY) * 1.6,
-    stock.originY + stock.sizeY / 2
-  );
-  controls.target.set(
-    stock.originX + stock.sizeX / 2,
-    stock.originZ + stock.sizeZ / 2,
-    stock.originY + stock.sizeY / 2
-  );
+  const b = fixtures.frameBounds();
+  if (!b) return;
+  camera.position.set(b.x, b.z + b.span * 1.6, b.y);
+  controls.target.set(b.x, b.z, b.y);
   controls.update();
 });
 if ($('btnIsoView')) $('btnIsoView').addEventListener('click', frameStock);
@@ -1183,7 +1147,7 @@ function animate(now) {
   last = now;
   sim.tick(dt);
   sim.updateSpindle(dt);
-  stock.updateMesh(scene);
+  for (const s of fixtures.stocks()) s.updateMesh(scene);
   trailAcc += dt;
   if (sim.playing && trailAcc > 0.1) {
     trailAcc = 0;
