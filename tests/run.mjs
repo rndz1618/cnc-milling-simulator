@@ -458,6 +458,19 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   eq(materialColor('xyz'), MATERIALS.alum.color);
 }
 
+// ---------- Tahap 7: touch-off ----------
+{
+  const t = await import('../src/machine/TouchOff.js');
+  const origin = { x: -50, y: -30, z: -20 }, size = { x: 100, y: 60, z: 20 };
+  eq(t.edgePlane('x-', origin, size), { axis: 'x', value: -50 });
+  eq(t.edgePlane('x+', origin, size), { axis: 'x', value: 50 });
+  eq(t.edgePlane('z-top', origin, size), { axis: 'z', value: 0 });
+  eq(t.contactOffset('x-', 3, { x: -53, y: 0, z: 0 }), { axis: 'x', value: -50 });
+  eq(t.contactOffset('x+', 3, { x: 53, y: 0, z: 0 }), { axis: 'x', value: 50 });
+  ok(t.checkContact('x-', 3, { x: -53 }, { axis: 'x', value: -50 }) === true);
+  ok(t.checkContact('x-', 3, { x: -60 }, { axis: 'x', value: -50 }) === false);
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
