@@ -572,6 +572,31 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
     'ToolProfile: hanya holder kena → HOLDER CRASH');
 }
 
+// ---------- Tahap 8: greedy mesher ----------
+{
+  const { buildGreedyGeometry, COLOR_RAW, COLOR_CUT } = await import('../src/stock/greedyMesh.js');
+  const solid = { grid: new Uint8Array(4 * 4 * 4).fill(1), nx: 4, ny: 4, nz: 4,
+    originX: 0, originY: 0, originZ: 0, res: 1 };
+  const g = buildGreedyGeometry(solid);
+  ok(!!g, 'greedy: solid grid menghasilkan geometri');
+  const tri = g.position.length / 9;
+  ok(tri <= 12, 'greedy: kubus solid ≤ 12 triangle (naif 192), dapat ' + tri);
+  eq(g.normal.length, g.position.length, 'greedy: panjang normal = position');
+  eq(g.color.length, g.position.length, 'greedy: panjang color = position');
+  // semua raw (belum ada potongan)
+  const hasCut = Array.from(g.color).some((c) => Math.abs(c - COLOR_CUT[0]) < 1e-6);
+  ok(!hasCut, 'greedy: belum dipotong → tanpa warna cut');
+
+  const carved = new Uint8Array(4 * 4 * 4).fill(1);
+  carved[0] = carved[1] = 0;                     // buang 2 voxel di sudut
+  const g2 = buildGreedyGeometry({ ...solid, grid: carved });
+  const colors = Array.from(g2.color);
+  ok(colors.some((c) => Math.abs(c - COLOR_RAW[0]) < 1e-6), 'greedy: ada sisi raw (luar)');
+  ok(colors.some((c) => Math.abs(c - COLOR_CUT[0]) < 1e-6), 'greedy: ada sisi cut (galian)');
+  const empty = buildGreedyGeometry({ ...solid, grid: new Uint8Array(4 * 4 * 4) });
+  ok(empty === null, 'greedy: grid kosong → null');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
