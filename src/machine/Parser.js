@@ -170,6 +170,7 @@ function blocksToMoves(blocks) {
   let wcs = 'G54';
   let retract = 'G99';
   let cycle = null; // { g, z, r, q }
+  let compSide = null; // 'left' | 'right' | null — modal cutter comp aktif
 
   const scale = () => (units === 'in' ? 25.4 : 1);
 
@@ -226,17 +227,23 @@ function blocksToMoves(blocks) {
         const p = np != null ? np : (nx != null ? nx : 0);
         moves.push({ type: 'dwell', p, line: blk.lineNum, raw: blk.raw.trim() });
       } else if (g === 17 || g === 18 || g === 19) {
-        plane = g;
+        if (g !== 17 && compSide !== null) {
+          blockAlarm = { code: 'G' + g, msg: 'CUTTER COMP HANYA G17', line: blk.lineNum };
+        } else {
+          plane = g;
+        }
       } else if (g === 20) units = 'in';
       else if (g === 21) units = 'mm';
       else if (g === 28) sawG28 = true;
       else if (g === 40) {
+        compSide = null;
         moves.push({ type: 'comp', side: null, d: nd != null ? nd : (tool || null), line: blk.lineNum, raw: blk.raw.trim() });
       } else if (g === 41 || g === 42) {
         if (plane !== 17) {
           blockAlarm = { code: 'G' + g, msg: 'CUTTER COMP HANYA G17', line: blk.lineNum };
         } else {
-          moves.push({ type: 'comp', side: g === 41 ? 'left' : 'right', d: nd != null ? nd : (tool || null), line: blk.lineNum, raw: blk.raw.trim() });
+          compSide = g === 41 ? 'left' : 'right';
+          moves.push({ type: 'comp', side: compSide, d: nd != null ? nd : (tool || null), line: blk.lineNum, raw: blk.raw.trim() });
         }
       } else if (g === 43) {
         if (nh == null) {

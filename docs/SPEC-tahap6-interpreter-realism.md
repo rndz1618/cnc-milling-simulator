@@ -76,7 +76,7 @@ parseGCode(text)
 **Arc G18/G19:**
 - Generalisasi `expandArc(x0,y0,z0,x1,y1,z1, i,j,k, r, cw, plane, segs)`.
 - G17: pusat dari (I,J), Z interpolasi linear.
-- G18: pusat dari (I,K), Y konstan; winding CW/CCW dari sudut pandang −Y.
+- G18: pusat dari (I,K), Y konstan; winding CW/CCW dari sudut pandang **+Y** (aturan tangan kanan = Fanuc; `u×v = +Y`).
 - G19: pusat dari (J,K), X konstan; winding dari sudut pandang +X.
 - R-form tetap didukung per-plane.
 

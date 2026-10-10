@@ -297,6 +297,22 @@ const plainComped = applyCutterComp(plainProgram.moves || [], { getRadius: () =>
 eq(plainComped.filter((m) => m.type === 'rapid' || m.type === 'feed').map((m) => [m.x, m.y]),
   [[-5, 0], [10, 0], [10, 10], [10, 0]], 'Comp non-aktif → path identik');
 
+// Comp: gerak tanpa perpindahan XY (plunge/retract) pertahankan offset (tak gouge ke kontur mentah).
+{
+  const zc = applyCutterComp(
+    parseGCode('G0 X0 Y0\nG41 D1\nG1 X10 F100\nG1 Y10\nG1 Z5\nG40\nM30').moves,
+    { getRadius: () => 3 }
+  ).filter((m) => m.type === 'feed');
+  close([zc[zc.length - 1].x, zc[zc.length - 1].y], [7, 10], 1e-6,
+    'Comp: Z move pertahankan offset (bukan titik mentah)');
+}
+// Comp: ganti plane ke non-G17 saat comp aktif → alarm (spec §5.2).
+{
+  const ps = parseGCode('G17 G41 D1\nG1 X10 Y10 F100\nG18\nG1 X20 Z5\nG40\nM30');
+  ok(ps.alarms.some((a) => a.msg === 'CUTTER COMP HANYA G17'),
+    'Comp: ganti plane saat comp aktif → alarm');
+}
+
 // ---------- Tahap 6: arc G18/G19 ----------
 const segsOf = (p) => p.moves.filter((m) => m.type === 'feed');
 const g18 = parseGCode('G0 X0 Y2 Z0\nG18 G2 X0 Z10 I0 K5 F100\nM30');
