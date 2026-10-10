@@ -118,7 +118,7 @@ try {
 
   // Tahap 7: FIXTURE editor — sub-tab, add row, simpan/muat skenario (tanpa pageerror).
   const fx = await page.evaluate(() => {
-    const out = { fixtureTab: false, fixtureVisible: false, rowsBefore: 0, rowsAfter: 0, saved: false, msg: '' };
+    const out = { fixtureTab: false, fixtureVisible: false, rowsBefore: 0, rowsAfter: 0, saved: false, fxCount: 0, progLen: 0, msg: '' };
     const m = document.querySelector('#modeTabs .mode-tab[data-mode="setup"]');
     if (m) m.click();
     const tab = document.querySelector('#setupSubs [data-sub="fixture"]');
@@ -137,6 +137,8 @@ try {
     if (save) save.click();
     const map = JSON.parse(localStorage.getItem('cnc-sim-scenarios') || '{}');
     out.saved = map.smoke_fixture !== undefined;
+    try { const sc = JSON.parse(map.smoke_fixture); out.fxCount = sc.fixtures.length; out.progLen = (sc.program || '').length; }
+    catch { out.fxCount = 0; out.progLen = 0; }
     out.msg = document.querySelector('#sbMsg')?.textContent || '';
     localStorage.removeItem('cnc-sim-scenarios');
     return out;
@@ -219,6 +221,8 @@ try {
   if (fx.rowsBefore < 1) problems.push('daftar fixture kosong (rows=' + fx.rowsBefore + ')');
   if (fx.rowsAfter <= fx.rowsBefore) problems.push('#fxAdd tidak menambah fixture (' + fx.rowsBefore + '->' + fx.rowsAfter + ')');
   if (!fx.saved) problems.push('skenario tidak tersimpan');
+  if (fx.fxCount !== 2) problems.push('skenario 2-ragum tidak menyimpan 2 fixture (fxCount=' + fx.fxCount + ')');
+  if (!(fx.progLen > 0)) problems.push('skenario 2-ragum tidak menyimpan program (progLen=' + fx.progLen + ')');
   if (!to.overlay) problems.push('wizard touch-off tidak terbuka (overlay=' + to.overlay + ')');
   if (to.disabledBefore !== true) problems.push('#toStart harus disabled sebelum kontak (disabledBefore=' + to.disabledBefore + ')');
   if (to.disabledAfter !== false) problems.push('#toStart harus enabled saat kontak (disabledAfter=' + to.disabledAfter + ')');

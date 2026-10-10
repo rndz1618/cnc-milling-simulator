@@ -513,6 +513,38 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(parseScenario('null') === null, 'skenario null → null');
 }
 
+// ---------- Tahap 7: skenario golden 2-ragum ----------
+{
+  const { Simulator } = await import('../src/sim/Simulator.js');
+  const { FixtureManager } = await import('../src/sim/FixtureManager.js');
+  const { makeFixture, serializeScenario, parseScenario } = await import('../src/machine/Fixtures.js');
+  const program = 'G00 G90 G54 X0 Y0 Z5\nG01 Z-6 F120\nG01 X40\nG00 Z10\nG55 X0 Y0 Z5\nG01 Z-2 F120\nG01 X40\nG00 Z10';
+  const scenario = {
+    fixtures: [
+      makeFixture({ wcs: 'G54' }),
+      makeFixture({ wcs: 'G55', name: 'Ragum 2' })
+    ],
+    program,
+    wcs: { G54: { x: 0, y: 0, z: 0 }, G55: { x: 0, y: 0, z: 0 } },
+    tools: [{ n: 1 }]
+  };
+  const back = parseScenario(serializeScenario(scenario));
+  eq(back.program, program, 'skenario reproduksi program 2-ragum');
+  eq(back.fixtures.length, 2, 'skenario reproduksi layout 2 ragum');
+
+  const machine = createMachineState();
+  const mgr = new FixtureManager({ scene: null, machine });
+  mgr.build(back.fixtures);
+  const A = mgr.stockFor('G54'), B = mgr.stockFor('G55');
+  ok(A && B, 'dua stok per WCS tersedia');
+  const sim = new Simulator({ stock: A, machine, resolveStock: (wcs) => mgr.stockFor(wcs), onResetStocks: () => mgr.stocks().forEach((s) => s.reset()) });
+  sim.loadMoves(parseGCode(program).moves);
+  let g = 0;
+  while (sim.index < sim.moves.length && g++ < 100000) sim.step();
+  ok(A.remainingRatio < 1 && B.remainingRatio < 1, 'dua stok terpotong independen');
+  ok(A.remainingRatio < B.remainingRatio, 'potongan G54 lebih dalam → sisa lebih kecil (' + A.remainingRatio + ' vs ' + B.remainingRatio + ')');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
