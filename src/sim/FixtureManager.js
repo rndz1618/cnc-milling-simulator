@@ -112,8 +112,14 @@ export class FixtureManager {
   dispose() {
     for (const e of this.entries) {
       if (this.scene) {
-        if (e.stock.mesh) this.scene.remove(e.stock.mesh);
-        if (e.vise) this.scene.remove(e.vise);
+        e.stock.dispose(this.scene);
+        if (e.vise) {
+          this.scene.remove(e.vise);
+          e.vise.traverse((o) => {
+            if (o.geometry) o.geometry.dispose();
+            if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose());
+          });
+        }
       }
     }
     this.entries = [];

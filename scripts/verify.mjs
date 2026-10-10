@@ -118,7 +118,7 @@ try {
 
   // Tahap 7: FIXTURE editor — sub-tab, add row, simpan/muat skenario (tanpa pageerror).
   const fx = await page.evaluate(() => {
-    const out = { fixtureTab: false, fixtureVisible: false, rowsBefore: 0, rowsAfter: 0, saved: false, fxCount: 0, progLen: 0, msg: '' };
+    const out = { fixtureTab: false, fixtureVisible: false, rowsBefore: 0, rowsAfter: 0, saved: false, fxCount: 0, progLen: 0, msg: '', loadMsg: '', rowsAfterLoad: 0 };
     const m = document.querySelector('#modeTabs .mode-tab[data-mode="setup"]');
     if (m) m.click();
     const tab = document.querySelector('#setupSubs [data-sub="fixture"]');
@@ -140,6 +140,9 @@ try {
     try { const sc = JSON.parse(map.smoke_fixture); out.fxCount = sc.fixtures.length; out.progLen = (sc.program || '').length; }
     catch { out.fxCount = 0; out.progLen = 0; }
     out.msg = document.querySelector('#sbMsg')?.textContent || '';
+    document.querySelector('#scenarioLoad')?.click();
+    out.loadMsg = document.querySelector('#sbMsg')?.textContent || '';
+    out.rowsAfterLoad = document.querySelectorAll('#fixtureList .fx-row').length;
     localStorage.removeItem('cnc-sim-scenarios');
     return out;
   });
@@ -223,6 +226,8 @@ try {
   if (!fx.saved) problems.push('skenario tidak tersimpan');
   if (fx.fxCount !== 2) problems.push('skenario 2-ragum tidak menyimpan 2 fixture (fxCount=' + fx.fxCount + ')');
   if (!(fx.progLen > 0)) problems.push('skenario 2-ragum tidak menyimpan program (progLen=' + fx.progLen + ')');
+  if (!/Skenario dimuat/.test(fx.loadMsg || '')) problems.push('skenario tidak bisa dimuat (loadMsg=' + fx.loadMsg + ')');
+  if (fx.rowsAfterLoad !== 2) problems.push('layout 2-ragum tidak dipulihkan saat load (rows=' + fx.rowsAfterLoad + ')');
   if (!to.overlay) problems.push('wizard touch-off tidak terbuka (overlay=' + to.overlay + ')');
   if (to.disabledBefore !== true) problems.push('#toStart harus disabled sebelum kontak (disabledBefore=' + to.disabledBefore + ')');
   if (to.disabledAfter !== false) problems.push('#toStart harus enabled saat kontak (disabledAfter=' + to.disabledAfter + ')');

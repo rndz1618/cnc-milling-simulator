@@ -6,7 +6,7 @@ import { applyCutterComp } from './machine/Compensator.js';
 import {
   makeFixture, normalizeFixtures, serializeScenario, parseScenario, MATERIALS
 } from './machine/Fixtures.js';
-import { EDGES, edgePlane, contactOffset, checkContact, surfaceCoord } from './machine/TouchOff.js';
+import { edgePlane, contactOffset, checkContact, surfaceCoord } from './machine/TouchOff.js';
 import { FixtureManager } from './sim/FixtureManager.js';
 import {
   createMachineState,
@@ -188,26 +188,6 @@ function syncOffsetInputsFromTables() {
       if (f && t[f] != null) inp.value = t[f];
     });
   });
-  if ($('stockX')) $('stockX').value = stockSetup.sizeX;
-  if ($('stockY')) $('stockY').value = stockSetup.sizeY;
-  if ($('stockZ')) $('stockZ').value = stockSetup.sizeZ;
-  syncStockPlacementInputs();
-}
-
-function syncStockPlacementInputs() {
-  const sel = $('stockPlacement');
-  if (sel) sel.value = stockSetup.placement;
-  const custom = stockSetup.placement === 'custom';
-  ['stockOx', 'stockOy', 'stockOz'].forEach((id) => {
-    const el = $(id);
-    if (el) {
-      el.disabled = !custom;
-      el.parentElement.style.opacity = custom ? '1' : '0.45';
-    }
-  });
-  if ($('stockOx')) $('stockOx').value = stockSetup.originX;
-  if ($('stockOy')) $('stockOy').value = stockSetup.originY;
-  if ($('stockOz')) $('stockOz').value = stockSetup.originZ;
 }
 
 // ---------- Alarm ----------
@@ -497,12 +477,12 @@ function applyFixtureField(f, field, raw) {
   else if (field === 'baseH') f.vise.baseH = Math.max(5, num || f.vise.baseH);
 }
 
-function rebuildFixtures(fit = true) {
+function rebuildFixtures(fit = true, render = true) {
   fixtures.build(normalizeFixtures(fixtureState));
   fixtureState = fixtures.entries.map((e) => e.fixture);
   stock = fixtures.stockFor(machine.activeWcs) || fixtures.stockFor('G54') || stock;
   fixtures.setVisible(!sim.dryRun);
-  renderFixtureList();
+  if (render) renderFixtureList();
   if ($('stockInfo')) {
     $('stockInfo').textContent = fixtureState.length + ' fixture' +
       (stock ? ' | origin mesin: ' + stock.originX.toFixed(1) + ', ' + stock.originY.toFixed(1) + ', ' + stock.originZ.toFixed(1) : '');
@@ -1073,30 +1053,6 @@ if ($('btnApplyTool')) {
   });
 }
 
-// Stock controls
-if ($('stockPlacement')) {
-  $('stockPlacement').addEventListener('change', (e) => {
-    stockSetup.placement = e.target.value;
-    applyStockSetup(true);
-  });
-}
-if ($('btnApplyStock')) {
-  $('btnApplyStock').addEventListener('click', () => {
-    stockSetup.sizeX = Math.max(10, parseFloat($('stockX').value) || 100);
-    stockSetup.sizeY = Math.max(10, parseFloat($('stockY').value) || 80);
-    stockSetup.sizeZ = Math.max(5, parseFloat($('stockZ').value) || 20);
-    if (stockSetup.placement === 'custom') {
-      stockSetup.originX = parseFloat($('stockOx').value) || 0;
-      stockSetup.originY = parseFloat($('stockOy').value) || 0;
-      stockSetup.originZ = parseFloat($('stockOz').value) || 0;
-    }
-    if ($('chkAutoFit')) $('chkAutoFit').checked = false;
-    applyStockSetup(true);
-    if ($('sbMsg')) $('sbMsg').textContent = 'Stock diterapkan: ' +
-      Math.round(stockSetup.sizeX) + '\u00d7' + Math.round(stockSetup.sizeY) + '\u00d7' + Math.round(stockSetup.sizeZ);
-  });
-}
-
 // Fixture editor
 if ($('fixtureList')) {
   $('fixtureList').addEventListener('input', (e) => {
@@ -1106,7 +1062,8 @@ if ($('fixtureList')) {
     const f = fixtureState[+row.dataset.idx];
     if (!f) return;
     applyFixtureField(f, field, e.target.value);
-    rebuildFixtures(false);
+    // select (wcs/material/placement) boleh re-render; input angka jangan (jaga fokus).
+    rebuildFixtures(false, field === 'wcs' || field === 'material' || field === 'placement');
   });
 }
 if ($('fxAdd')) {
@@ -1156,13 +1113,14 @@ if ($('scenarioLoad')) {
     const map = loadScenarioMap();
     const sc = map[name] ? parseScenario(map[name]) : null;
     if (!sc) { sbMsg('Skenario tidak ditemukan: ' + name); return; }
-    if (Array.isArray(sc.fixtures)) fixtureState = normalizeFixtures(sc.fixtures);
     if (sc.wcs) Object.assign(machine.wcs, sc.wcs);
     if (sc.tools) Object.assign(toolTable, sc.tools);
     if ($('gcodeInput') && typeof sc.program === 'string') {
       $('gcodeInput').value = sc.program;
       loadProgram();
     }
+    // setelah loadProgram (auto-fit bisa menimpa G54) — layout skenario yang menang.
+    if (Array.isArray(sc.fixtures)) fixtureState = normalizeFixtures(sc.fixtures);
     syncOffsetInputsFromTables();
     rebuildFixtures(true);
     sbMsg('Skenario dimuat: ' + name);
@@ -1299,6 +1257,9 @@ function touchOffSetWcs() {
   machine.wcs[f.wcs] = machine.wcs[f.wcs] || { x: 0, y: 0, z: 0 };
   machine.wcs[f.wcs][off.axis] = off.value;
   savePersistedOffsets();
+  computeMachineMoves();
+  rebuildPreview();
+  rebuildWcsMarkers();
   syncOffsetInputsFromTables();
   refreshUI();
   sbMsg('Touch-off set — ' + f.wcs + ' ' + off.axis.toUpperCase() + ' = ' + off.value.toFixed(3));
