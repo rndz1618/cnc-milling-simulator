@@ -597,6 +597,25 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(empty === null, 'greedy: grid kosong → null');
 }
 
+// ---------- Tahap 8: VoxelStock greedy ----------
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const s = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0 });
+  const geo = s.buildGeometry();
+  const tri = (geo.attributes.position?.count || 0) / 3;
+  ok(tri > 0 && tri <= 12, 'VoxelStock: stok solid → greedy ≤ 12 triangle, dapat ' + tri);
+  // cut lalu rebuild: ada warna cut (bukan hanya raw).
+  // Catatan: brief memakai radius 2, tapi pada res 5 pusat voxel di 2.5 →
+  // jarak ke garis y=0 adalah 2.55 (> 2) sehingga tak ada voxel tersentuh;
+  // radius 3 agar potongan benar-benar menyentuh grid.
+  ok(s.cutSegment(0, 0, 0, 10, 0, 0, 3), 'VoxelStock: cut mengubah grid');
+  const geo2 = s.buildGeometry();
+  const col = geo2.attributes.color.array;
+  const cutR = 0.55;
+  ok(Array.from(col).some((c, i) => i % 3 === 0 && Math.abs(c - cutR) < 1e-6),
+    'VoxelStock: setelah potong ada warna machined (cut)');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {

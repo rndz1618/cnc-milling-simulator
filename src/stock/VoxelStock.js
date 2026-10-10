@@ -3,9 +3,9 @@
  * Cut faces use a darker “machined” color so material removal is obvious.
  */
 import * as THREE from 'three';
+import { buildGreedyGeometry } from './greedyMesh.js';
 
 const COLOR_RAW = [0.96, 0.78, 0.32];       // brighter brass stock
-const COLOR_CUT = [0.55, 0.58, 0.62];       // lighter machined grey (clear contrast)
 
 export class VoxelStock {
   constructor({
@@ -102,6 +102,9 @@ export class VoxelStock {
     const r2 = radius * radius;
     const { ix: cx0, iy: cy0 } = this.worldToVoxel(cx, cy, zTip);
     const rVox = Math.ceil(radius / this.res) + 1;
+    // Mulai dari voxel yang memuat ujung tool: voxel di bawahnya tak akan pernah
+    // lolos cek wz >= zTip - 0.01, jadi aman dilewati (regresi cut tetap sama).
+    const izStart = Math.max(0, Math.floor((zTip - this.originZ) / this.res));
 
     let changed = false;
     for (let iy = cy0 - rVox; iy <= cy0 + rVox; iy++) {
@@ -110,7 +113,7 @@ export class VoxelStock {
         const wy = this.originY + (iy + 0.5) * this.res;
         if ((wx - cx) ** 2 + (wy - cy) ** 2 > r2) continue;
 
-        for (let iz = 0; iz < this.nz; iz++) {
+        for (let iz = izStart; iz < this.nz; iz++) {
           if (!this.inBounds(ix, iy, iz)) continue;
           const wz = this.originZ + (iz + 0.5) * this.res;
           if (wz >= zTip - 0.01) {
@@ -148,72 +151,20 @@ export class VoxelStock {
   }
 
   buildGeometry() {
-    const positions = [];
-    const normals = [];
-    const colors = [];
-    const res = this.res;
-    const ox = this.originX;
-    const oy = this.originY;
-    const oz = this.originZ;
-
-    const isSolid = (ix, iy, iz) =>
-      this.inBounds(ix, iy, iz) && this.grid[this.idx(ix, iy, iz)] === 1;
-
-    const faces = [
-      { d: [1, 0, 0], n: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
-      { d: [-1, 0, 0], n: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
-      { d: [0, 1, 0], n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-      { d: [0, -1, 0], n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-      { d: [0, 0, 1], n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
-      { d: [0, 0, -1], n: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] }
-    ];
-
-    for (let iz = 0; iz < this.nz; iz++) {
-      for (let iy = 0; iy < this.ny; iy++) {
-        for (let ix = 0; ix < this.nx; ix++) {
-          if (!isSolid(ix, iy, iz)) continue;
-
-          for (const f of faces) {
-            const nix = ix + f.d[0];
-            const niy = iy + f.d[1];
-            const niz = iz + f.d[2];
-            if (isSolid(nix, niy, niz)) continue;
-
-            const outsideAABB = !this.inBounds(nix, niy, niz);
-            const col = outsideAABB ? this.colorRaw : COLOR_CUT;
-
-            const cx = ix + 0.5 + f.d[0] * 0.5;
-            const cy = iy + 0.5 + f.d[1] * 0.5;
-            const cz = iz + 0.5 + f.d[2] * 0.5;
-            const u = f.u;
-            const v = f.v;
-            const corners = [
-              [cx - u[0] * 0.5 - v[0] * 0.5, cy - u[1] * 0.5 - v[1] * 0.5, cz - u[2] * 0.5 - v[2] * 0.5],
-              [cx + u[0] * 0.5 - v[0] * 0.5, cy + u[1] * 0.5 - v[1] * 0.5, cz + u[2] * 0.5 - v[2] * 0.5],
-              [cx + u[0] * 0.5 + v[0] * 0.5, cy + u[1] * 0.5 + v[1] * 0.5, cz + u[2] * 0.5 + v[2] * 0.5],
-              [cx - u[0] * 0.5 + v[0] * 0.5, cy - u[1] * 0.5 + v[1] * 0.5, cz - u[2] * 0.5 + v[2] * 0.5]
-            ];
-
-            const order = (f.d[0] + f.d[1] + f.d[2] > 0)
-              ? [0, 1, 2, 0, 2, 3]
-              : [0, 2, 1, 0, 3, 2];
-
-            for (const oi of order) {
-              const c = corners[oi];
-              const wx = ox + c[0] * res;
-              const wy = oy + c[1] * res;
-              const wz = oz + c[2] * res;
-              positions.push(wx, wz, wy);
-              normals.push(f.n[0], f.n[2], f.n[1]);
-              colors.push(col[0], col[1], col[2]);
-            }
-          }
-        }
-      }
-    }
+    const g = buildGreedyGeometry({
+      grid: this.grid,
+      nx: this.nx,
+      ny: this.ny,
+      nz: this.nz,
+      originX: this.originX,
+      originY: this.originY,
+      originZ: this.originZ,
+      res: this.res,
+      colorRaw: this.colorRaw
+    });
 
     const geo = new THREE.BufferGeometry();
-    if (positions.length === 0) {
+    if (!g) {
       const box = new THREE.BoxGeometry(this.sizeX, this.sizeZ, this.sizeY);
       box.translate(
         this.originX + this.sizeX / 2,
@@ -222,9 +173,9 @@ export class VoxelStock {
       );
       return box;
     }
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(g.color, 3));
     geo.computeBoundingSphere();
     return geo;
   }
