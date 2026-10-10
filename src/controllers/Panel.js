@@ -30,7 +30,7 @@ export const DEFAULT_PROFILE = {
   setupSubs: [
     { id: 'work', label: 'WORK' },
     { id: 'tool', label: 'TOOL' },
-    { id: 'stock', label: 'STOCK' }
+    { id: 'fixture', label: 'FIXTURE' }
   ],
   softkeys: [
     { f: 1, label: 'OFFSET', action: 'open-offset' },

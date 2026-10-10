@@ -115,6 +115,32 @@ try {
     document.querySelector('#btnMdiRun').click();
   });
   await page.waitForTimeout(800);
+
+  // Tahap 7: FIXTURE editor — sub-tab, add row, simpan/muat skenario (tanpa pageerror).
+  const fx = await page.evaluate(() => {
+    const out = { fixtureTab: false, fixtureVisible: false, rowsBefore: 0, rowsAfter: 0, saved: false, msg: '' };
+    const m = document.querySelector('#modeTabs .mode-tab[data-mode="setup"]');
+    if (m) m.click();
+    const tab = document.querySelector('#setupSubs [data-sub="fixture"]');
+    if (tab) tab.click();
+    const pane = document.querySelector('#setupFixture');
+    if (pane) out.fixtureVisible = getComputedStyle(pane).display === 'flex';
+    out.fixtureTab = !!tab && tab.textContent.trim() === 'FIXTURE';
+    const rows = () => document.querySelectorAll('#fixtureList .fx-row').length;
+    out.rowsBefore = rows();
+    const add = document.querySelector('#fxAdd');
+    if (add) add.click();
+    out.rowsAfter = rows();
+    const nameEl = document.querySelector('#scenarioName');
+    if (nameEl) nameEl.value = 'smoke_fixture';
+    const save = document.querySelector('#scenarioSave');
+    if (save) save.click();
+    const map = JSON.parse(localStorage.getItem('cnc-sim-scenarios') || '{}');
+    out.saved = map.smoke_fixture !== undefined;
+    out.msg = document.querySelector('#sbMsg')?.textContent || '';
+    localStorage.removeItem('cnc-sim-scenarios');
+    return out;
+  });
   await browser.close();
 
   const glines = shell.glines;
@@ -149,6 +175,10 @@ try {
   if (!feedHoldLabel.includes('FEED HOLD')) problems.push('tombol FEED HOLD tidak ada (label=' + feedHoldLabel + ')');
   if (!hold.flags.includes('FEED HOLD')) problems.push('flag FEED HOLD tidak tampil (flags=' + hold.flags + ')');
   if (!/^S\d+/.test(hdrSpindle || '')) problems.push('RPM aktual tidak tampil (hdrSpindle=' + hdrSpindle + ')');
+  if (!fx.fixtureTab || !fx.fixtureVisible) problems.push('sub-tab FIXTURE tidak tampil (tab=' + fx.fixtureTab + ' visible=' + fx.fixtureVisible + ')');
+  if (fx.rowsBefore < 1) problems.push('daftar fixture kosong (rows=' + fx.rowsBefore + ')');
+  if (fx.rowsAfter <= fx.rowsBefore) problems.push('#fxAdd tidak menambah fixture (' + fx.rowsBefore + '->' + fx.rowsAfter + ')');
+  if (!fx.saved) problems.push('skenario tidak tersimpan');
   if (errors.length) problems.push('pageerror: ' + errors[0]);
   if (problems.length) throw new Error(problems.join('; '));
   console.log('smoke OK — glines=' + glines + ' status=' + status + ' stock=' + stock);

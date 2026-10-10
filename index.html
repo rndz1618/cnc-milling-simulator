@@ -169,29 +169,21 @@
           </div>
         </div>
 
-        <div id="setupStock" class="setup-pane" style="display:none">
-          <div class="setup-hint">STOCK — ukuran &amp; posisi terhadap work zero (G54)</div>
-          <div class="stock-grid">
-            <label>X <input type="number" id="stockX" value="100" step="1" /></label>
-            <label>Y <input type="number" id="stockY" value="80" step="1" /></label>
-            <label>Z <input type="number" id="stockZ" value="20" step="1" /></label>
+        <div id="setupFixture" class="setup-pane" style="display:none">
+          <div class="setup-hint">FIXTURE — ragum &amp; stok per work offset (G54–G59)</div>
+          <div id="fixtureList" class="fixture-list"></div>
+          <div class="setup-actions">
+            <button class="btn" id="fxAdd">+ Fixture</button>
+            <button class="btn" id="fxRemove">− Fixture</button>
           </div>
-          <div class="stock-place">
-            <label>Posisi terhadap G54
-              <select id="stockPlacement">
-                <option value="top-center">Tengah — Z0 di atas (top-center)</option>
-                <option value="top-corner">Sudut — Z0 di atas (top-corner)</option>
-                <option value="custom">Manual (origin mesin)</option>
-              </select>
-            </label>
-          </div>
+          <div class="setup-hint">SKENARIO — layout + program + WCS + tool</div>
           <div class="stock-grid">
-            <label>oX <input type="number" id="stockOx" value="-50" step="0.5" disabled /></label>
-            <label>oY <input type="number" id="stockOy" value="-40" step="0.5" disabled /></label>
-            <label>oZ <input type="number" id="stockOz" value="-20" step="0.5" disabled /></label>
+            <label>Nama <input type="text" id="scenarioName" placeholder="2-ragum O20018" /></label>
           </div>
           <div class="setup-actions">
-            <button class="btn btn-primary" id="btnApplyStock">Apply Stock</button>
+            <button class="btn btn-primary" id="scenarioSave">Simpan</button>
+            <button class="btn" id="scenarioLoad">Muat</button>
+            <button class="btn" id="scenarioDelete">Hapus</button>
           </div>
           <div class="setup-hint" id="stockInfo">origin mesin: -50.0, -40.0, -20.0</div>
         </div>

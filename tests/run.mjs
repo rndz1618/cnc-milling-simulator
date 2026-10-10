@@ -503,6 +503,16 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok((b2.max.x - b2.min.x) > (b1.max.x - b1.min.x), 'vise melebar dengan jawWidth');
 }
 
+// ---------- Tahap 7: skenario ----------
+{
+  const { serializeScenario, parseScenario, makeFixture } = await import('../src/machine/Fixtures.js');
+  const s = { fixtures: [makeFixture({ wcs: 'G54' })], program: 'G0 X0', wcs: { G54: { x: 0, y: 0, z: 0 } }, tools: [{ n: 1 }] };
+  const back = parseScenario(serializeScenario(s));
+  eq(back.program, 'G0 X0'); eq(back.fixtures.length, 1); eq(back.tools.length, 1);
+  ok(parseScenario('{bukan json') === null, 'skenario korup → null');
+  ok(parseScenario('null') === null, 'skenario null → null');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {

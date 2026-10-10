@@ -69,3 +69,17 @@ export function materialRGB(material) {
   const n = parseInt(materialColor(material).replace('#', ''), 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
+
+export function serializeScenario(scenario) {
+  return JSON.stringify(scenario);
+}
+
+export function parseScenario(text) {
+  try {
+    const o = typeof text === 'string' ? JSON.parse(text) : text;
+    if (!o || typeof o !== 'object') return null;
+    return o;
+  } catch {
+    return null;
+  }
+}

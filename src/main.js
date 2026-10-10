@@ -3,7 +3,9 @@
 import { boundsFromPoints, formatStockSize } from './stock/fitStock.js';
 import { parseGCode } from './machine/Parser.js';
 import { applyCutterComp } from './machine/Compensator.js';
-import { makeFixture } from './machine/Fixtures.js';
+import {
+  makeFixture, normalizeFixtures, serializeScenario, parseScenario, MATERIALS
+} from './machine/Fixtures.js';
 import { FixtureManager } from './sim/FixtureManager.js';
 import {
   createMachineState,
@@ -113,7 +115,8 @@ const toolTable = {
 // ---------- State ----------
 const machine = createMachineState();
 const fixtures = new FixtureManager({ scene, machine, createVise });
-fixtures.build([fixtureFromStockSetup()]);
+let fixtureState = [fixtureFromStockSetup()];
+fixtures.build(normalizeFixtures(fixtureState));
 let stock = fixtures.stockFor('G54');
 let activeTool = 1;
 let droMode = 'work';
@@ -440,12 +443,90 @@ function frameStock() {
   controls.update();
 }
 
-// ---------- Stock setup ----------
-function applyStockSetup(fitToView = true) {
-  fixtures.build([fixtureFromStockSetup()]);
-  stock = fixtures.stockFor('G54');
+// ---------- Fixture layout ----------
+function nextFreeWcs(list) {
+  const used = new Set(list.map((f) => f.wcs));
+  return ['G54', 'G55', 'G56', 'G57', 'G58', 'G59'].find((w) => !used.has(w)) || null;
+}
+
+function fixtureRowHtml(f, idx) {
+  const opt = (v, label, sel) => '<option value="' + v + '"' + (v === sel ? ' selected' : '') + '>' + label + '</option>';
+  const wcsOpts = ['G54', 'G55', 'G56', 'G57', 'G58', 'G59'].map((w) => opt(w, w, f.wcs)).join('');
+  const matOpts = Object.keys(MATERIALS).map((m) => opt(m, MATERIALS[m].label, f.stock.material)).join('');
+  const placeOpts = ['top-center', 'top-corner', 'custom']
+    .map((p) => opt(p, p === 'custom' ? 'Manual' : p, f.placement)).join('');
+  return '' +
+    '<div class="fx-row" data-idx="' + idx + '">' +
+    '<div class="fx-head"><b>' + f.name + '</b>' +
+    '<select data-field="wcs">' + wcsOpts + '</select></div>' +
+    '<div class="stock-grid">' +
+    '<label>X <input type="number" data-field="stockX" value="' + f.stock.sizeX + '" /></label>' +
+    '<label>Y <input type="number" data-field="stockY" value="' + f.stock.sizeY + '" /></label>' +
+    '<label>Z <input type="number" data-field="stockZ" value="' + f.stock.sizeZ + '" /></label>' +
+    '</div>' +
+    '<div class="stock-grid">' +
+    '<label>Material <select data-field="material">' + matOpts + '</select></label>' +
+    '<label>Posisi <select data-field="placement">' + placeOpts + '</select></label>' +
+    '</div>' +
+    '<div class="stock-grid">' +
+    '<label>Jaw W <input type="number" data-field="jawWidth" value="' + f.vise.jawWidth + '" /></label>' +
+    '<label>Jaw H <input type="number" data-field="jawHeight" value="' + f.vise.jawHeight + '" /></label>' +
+    '<label>Opening <input type="number" data-field="opening" value="' + f.vise.opening + '" /></label>' +
+    '<label>Base H <input type="number" data-field="baseH" value="' + f.vise.baseH + '" /></label>' +
+    '</div></div>';
+}
+
+function renderFixtureList() {
+  const host = $('fixtureList');
+  if (!host) return;
+  host.innerHTML = fixtureState.map(fixtureRowHtml).join('');
+}
+
+function applyFixtureField(f, field, raw) {
+  const num = parseFloat(raw);
+  if (field === 'wcs') f.wcs = raw;
+  else if (field === 'material') f.stock.material = raw;
+  else if (field === 'placement') f.placement = raw;
+  else if (field === 'stockX') f.stock.sizeX = Math.max(10, num || f.stock.sizeX);
+  else if (field === 'stockY') f.stock.sizeY = Math.max(10, num || f.stock.sizeY);
+  else if (field === 'stockZ') f.stock.sizeZ = Math.max(5, num || f.stock.sizeZ);
+  else if (field === 'jawWidth') f.vise.jawWidth = Math.max(20, num || f.vise.jawWidth);
+  else if (field === 'jawHeight') f.vise.jawHeight = Math.max(5, num || f.vise.jawHeight);
+  else if (field === 'opening') f.vise.opening = Math.max(10, num || f.vise.opening);
+  else if (field === 'baseH') f.vise.baseH = Math.max(5, num || f.vise.baseH);
+}
+
+function rebuildFixtures(fit = true) {
+  fixtures.build(normalizeFixtures(fixtureState));
+  fixtureState = fixtures.entries.map((e) => e.fixture);
+  stock = fixtures.stockFor(machine.activeWcs) || fixtures.stockFor('G54') || stock;
   fixtures.setVisible(!sim.dryRun);
-  syncStockPlacementInputs();
+  renderFixtureList();
+  if ($('stockInfo')) {
+    $('stockInfo').textContent = fixtureState.length + ' fixture' +
+      (stock ? ' | origin mesin: ' + stock.originX.toFixed(1) + ', ' + stock.originY.toFixed(1) + ', ' + stock.originZ.toFixed(1) : '');
+  }
+  if (fit) frameStock();
+  refreshUI();
+}
+
+function applyFixtureLayout(list) {
+  const norm = normalizeFixtures(list);
+  fixtureState = norm.length ? norm : [fixtureFromStockSetup()];
+  rebuildFixtures(true);
+}
+
+// ---------- Stock setup (fixture G54 — jalur auto-fit/legacy) ----------
+function applyStockSetup(fitToView = true) {
+  const f = fixtureFromStockSetup();
+  const cur = fixtureState.find((x) => x.wcs === 'G54');
+  if (cur) { cur.stock = { ...cur.stock, ...f.stock }; cur.placement = f.placement; cur.offset = f.offset; }
+  else fixtureState.unshift(f);
+  fixtures.build(normalizeFixtures(fixtureState));
+  fixtureState = fixtures.entries.map((e) => e.fixture);
+  stock = fixtures.stockFor('G54') || stock;
+  fixtures.setVisible(!sim.dryRun);
+  renderFixtureList();
   if ($('stockSizeLabel')) {
     $('stockSizeLabel').textContent = Math.round(stockSetup.sizeX) + '\u00d7' +
       Math.round(stockSetup.sizeY) + '\u00d7' + Math.round(stockSetup.sizeZ);
@@ -675,7 +756,7 @@ function applySetupSub(sub) {
   document.querySelectorAll('#setupSubs .subtab').forEach((b) => {
     b.classList.toggle('active', b.dataset.sub === sub);
   });
-  ['work', 'tool', 'stock'].forEach((p) => {
+  ['work', 'tool', 'fixture'].forEach((p) => {
     const el = $('setup' + p.charAt(0).toUpperCase() + p.slice(1));
     if (el) el.style.display = sub === p ? 'flex' : 'none';
   });
@@ -1012,6 +1093,87 @@ if ($('btnApplyStock')) {
     applyStockSetup(true);
     if ($('sbMsg')) $('sbMsg').textContent = 'Stock diterapkan: ' +
       Math.round(stockSetup.sizeX) + '\u00d7' + Math.round(stockSetup.sizeY) + '\u00d7' + Math.round(stockSetup.sizeZ);
+  });
+}
+
+// Fixture editor
+if ($('fixtureList')) {
+  $('fixtureList').addEventListener('input', (e) => {
+    const row = e.target.closest('.fx-row');
+    const field = e.target.dataset.field;
+    if (!row || !field) return;
+    const f = fixtureState[+row.dataset.idx];
+    if (!f) return;
+    applyFixtureField(f, field, e.target.value);
+    rebuildFixtures(false);
+  });
+}
+if ($('fxAdd')) {
+  $('fxAdd').addEventListener('click', () => {
+    if (fixtureState.length >= 6) { sbMsg('Maksimum 6 fixture'); return; }
+    const wcs = nextFreeWcs(fixtureState);
+    if (!wcs) { sbMsg('Semua WCS terpakai'); return; }
+    fixtureState.push(makeFixture({ wcs, name: 'Ragum ' + (fixtureState.length + 1) }));
+    rebuildFixtures(true);
+  });
+}
+if ($('fxRemove')) {
+  $('fxRemove').addEventListener('click', () => {
+    if (fixtureState.length <= 1) { sbMsg('Minimal 1 fixture'); return; }
+    fixtureState.pop();
+    rebuildFixtures(true);
+  });
+}
+
+// Scenarios
+const SCENARIO_KEY = 'cnc-sim-scenarios';
+function loadScenarioMap() {
+  try { return JSON.parse(localStorage.getItem(SCENARIO_KEY)) || {}; }
+  catch { return {}; }
+}
+function saveScenarioMap(map) {
+  localStorage.setItem(SCENARIO_KEY, JSON.stringify(map));
+}
+if ($('scenarioSave')) {
+  $('scenarioSave').addEventListener('click', () => {
+    const name = ($('scenarioName') && $('scenarioName').value.trim()) || '';
+    if (!name) { sbMsg('Isi nama skenario dulu'); return; }
+    const map = loadScenarioMap();
+    map[name] = serializeScenario({
+      fixtures: fixtureState,
+      program: ($('gcodeInput') && $('gcodeInput').value) || '',
+      wcs: machine.wcs,
+      tools: toolTable
+    });
+    saveScenarioMap(map);
+    sbMsg('Skenario tersimpan: ' + name);
+  });
+}
+if ($('scenarioLoad')) {
+  $('scenarioLoad').addEventListener('click', () => {
+    const name = ($('scenarioName') && $('scenarioName').value.trim()) || '';
+    const map = loadScenarioMap();
+    const sc = map[name] ? parseScenario(map[name]) : null;
+    if (!sc) { sbMsg('Skenario tidak ditemukan: ' + name); return; }
+    if (Array.isArray(sc.fixtures)) fixtureState = normalizeFixtures(sc.fixtures);
+    if (sc.wcs) Object.assign(machine.wcs, sc.wcs);
+    if (sc.tools) Object.assign(toolTable, sc.tools);
+    if ($('gcodeInput') && typeof sc.program === 'string') {
+      $('gcodeInput').value = sc.program;
+      loadProgram();
+    }
+    syncOffsetInputsFromTables();
+    rebuildFixtures(true);
+    sbMsg('Skenario dimuat: ' + name);
+  });
+}
+if ($('scenarioDelete')) {
+  $('scenarioDelete').addEventListener('click', () => {
+    const name = ($('scenarioName') && $('scenarioName').value.trim()) || '';
+    const map = loadScenarioMap();
+    delete map[name];
+    saveScenarioMap(map);
+    sbMsg('Skenario dihapus: ' + name);
   });
 }
 
