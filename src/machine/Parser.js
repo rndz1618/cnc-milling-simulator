@@ -101,30 +101,41 @@ const KNOWN_G = new Set([
 ]);
 const KNOWN_M = new Set([0, 1, 3, 4, 5, 6, 8, 9, 30, 97, 99]);
 
-/** Ekspansi arc G2/G3 (bidang G17/XY) menjadi segmen linear. */
-function expandArc(x0, y0, z0, x1, y1, z1, i, j, r, cw, segs = 24) {
-  let cx, cy;
-  if (i != null || j != null) {
-    cx = x0 + (i || 0);
-    cy = y0 + (j || 0);
+/** Ekspansi arc G2/G3 plane-aware (G17 XY, G18 ZX, G19 YZ) menjadi segmen linear. */
+function expandArc(x0, y0, z0, x1, y1, z1, i, j, k, r, cw, plane = 17, segs = 24) {
+  // Sumbu in-plane (u,v) dengan u×v = normal positif bidang (sesuai arah G2/G3).
+  let u0, v0, u1, v1, iu, jv;
+  if (plane === 18) { u0 = z0; v0 = x0; u1 = z1; v1 = x1; iu = k; jv = i; }
+  else if (plane === 19) { u0 = y0; v0 = z0; u1 = y1; v1 = z1; iu = j; jv = k; }
+  else { u0 = x0; v0 = y0; u1 = x1; v1 = y1; iu = i; jv = j; }
+
+  const emit = (pu, pv, t) => {
+    if (plane === 18) return { x: pv, y: y0, z: pu };
+    if (plane === 19) return { x: x0, y: pu, z: pv };
+    return { x: pu, y: pv, z: z0 + (z1 - z0) * t };
+  };
+
+  let cu, cv;
+  if (iu != null || jv != null) {
+    cu = u0 + (iu || 0);
+    cv = v0 + (jv || 0);
   } else if (r != null && r !== 0) {
-    const dx = x1 - x0, dy = y1 - y0;
-    const chord = Math.sqrt(dx * dx + dy * dy);
-    if (chord < 1e-9) return [{ x: x1, y: y1, z: z1 }];
+    const du = u1 - u0, dv = v1 - v0;
+    const chord = Math.sqrt(du * du + dv * dv);
+    if (chord < 1e-9) return [emit(u1, v1, 1)];
     const rr = Math.abs(r);
-    const h2 = rr * rr - (chord * 0.5) * (chord * 0.5);
-    const h = Math.sqrt(Math.max(0, h2));
-    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
-    const nx = -dy / chord, ny = dx / chord;
+    const h = Math.sqrt(Math.max(0, rr * rr - (chord * 0.5) * (chord * 0.5)));
+    const mu = (u0 + u1) / 2, mv = (v0 + v1) / 2;
+    const nu = -dv / chord, nv = du / chord;
     const side = (r >= 0) === cw ? -1 : 1;
-    cx = mx + side * h * nx;
-    cy = my + side * h * ny;
+    cu = mu + side * h * nu;
+    cv = mv + side * h * nv;
   } else {
-    return [{ x: x1, y: y1, z: z1 }];
+    return [emit(u1, v1, 1)];
   }
 
-  const a0 = Math.atan2(y0 - cy, x0 - cx);
-  const a1 = Math.atan2(y1 - cy, x1 - cx);
+  const a0 = Math.atan2(v0 - cv, u0 - cu);
+  const a1 = Math.atan2(v1 - cv, u1 - cu);
   let da = a1 - a0;
   if (cw) {
     while (da > 0) da -= Math.PI * 2;
@@ -134,19 +145,15 @@ function expandArc(x0, y0, z0, x1, y1, z1, i, j, r, cw, segs = 24) {
     if (Math.abs(da) < 1e-9) da = Math.PI * 2;
   }
 
-  const rad = Math.sqrt((x0 - cx) ** 2 + (y0 - cy) ** 2) || 1;
+  const rad = Math.sqrt((u0 - cu) ** 2 + (v0 - cv) ** 2) || 1;
   const n = Math.max(8, Math.min(72, Math.ceil(Math.abs(da) / (Math.PI / segs))));
   const pts = [];
   for (let s = 1; s <= n; s++) {
     const t = s / n;
     const ang = a0 + da * t;
-    pts.push({
-      x: cx + rad * Math.cos(ang),
-      y: cy + rad * Math.sin(ang),
-      z: z0 + (z1 - z0) * t
-    });
+    pts.push(emit(cu + rad * Math.cos(ang), cv + rad * Math.sin(ang), t));
   }
-  pts[pts.length - 1] = { x: x1, y: y1, z: z1 };
+  pts[pts.length - 1] = emit(u1, v1, 1);
   return pts;
 }
 
@@ -342,13 +349,7 @@ function blocksToMoves(blocks) {
     if (tx === x && ty === y && tz === z && motion !== 2 && motion !== 3) continue;
 
     if (motion === 2 || motion === 3) {
-      if (plane !== 17) {
-        const a = { code: 'G' + motion, msg: 'ARC HANYA DIDUKUNG DI G17 (XY)', line: blk.lineNum };
-        alarms.push(a);
-        moves.push({ type: 'alarm', ...a, raw: blk.raw.trim() });
-        continue;
-      }
-      const pts = expandArc(x, y, z, tx, ty, tz, ni, nj, nr, motion === 2);
+      const pts = expandArc(x, y, z, tx, ty, tz, ni, nj, nk, nr, motion === 2, plane);
       for (const p of pts) {
         moves.push({ x: p.x, y: p.y, z: p.z, type: 'feed', g: motion, ...meta() });
       }

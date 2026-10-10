@@ -297,6 +297,21 @@ const plainComped = applyCutterComp(plainProgram.moves || [], { getRadius: () =>
 eq(plainComped.filter((m) => m.type === 'rapid' || m.type === 'feed').map((m) => [m.x, m.y]),
   [[-5, 0], [10, 0], [10, 10], [10, 0]], 'Comp non-aktif → path identik');
 
+// ---------- Tahap 6: arc G18/G19 ----------
+const segsOf = (p) => p.moves.filter((m) => m.type === 'feed');
+const g18 = parseGCode('G0 X0 Y2 Z0\nG18 G2 X0 Z10 I0 K5 F100\nM30');
+ok(!g18.alarms.length, 'G18: tanpa alarm');
+ok(segsOf(g18).length >= 8, 'G18: arc di-expand jadi ≥8 segmen');
+const mid18 = segsOf(g18).reduce((a, b) => (Math.abs(b.x) > Math.abs(a.x) ? b : a));
+ok(Math.abs(Math.abs(mid18.x) - 5) < 1e-6, 'G18: titik tengah X=±5');
+ok(Math.abs(mid18.z - 5) < 1e-6, 'G18: titik tengah Z=5');
+ok(segsOf(g18).every((s) => Math.abs(s.y - 2) < 1e-9), 'G18: Y tetap 2');
+const g19 = parseGCode('G0 X2 Y0 Z0\nG19 G2 Y0 Z10 J0 K5 F100\nM30');
+ok(!g19.alarms.length, 'G19: tanpa alarm');
+const mid19 = segsOf(g19).reduce((a, b) => (Math.abs(b.y) > Math.abs(a.y) ? b : a));
+ok(Math.abs(Math.abs(mid19.y) - 5) < 1e-6 && Math.abs(mid19.z - 5) < 1e-6, 'G19: tengah Y±5 Z5');
+ok(segsOf(g19).every((s) => Math.abs(s.x - 2) < 1e-9), 'G19: X tetap 2');
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
