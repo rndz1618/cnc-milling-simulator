@@ -1,5 +1,5 @@
 import { VoxelStock } from '../stock/VoxelStock.js';
-import { stockOriginFor } from '../machine/Fixtures.js';
+import { stockOriginFor, materialRGB } from '../machine/Fixtures.js';
 import { wcsOffset } from '../machine/MachineState.js';
 
 export class FixtureManager {
@@ -18,19 +18,23 @@ export class FixtureManager {
       const s = fixture.stock;
       const stock = new VoxelStock({
         sizeX: s.sizeX, sizeY: s.sizeY, sizeZ: s.sizeZ,
-        originX: origin.x, originY: origin.y, originZ: origin.z
+        originX: origin.x, originY: origin.y, originZ: origin.z,
+        colorRaw: materialRGB(s.material)
       });
       let vise = null;
       if (this.scene) {
         stock.updateMesh(this.scene, true);
         if (this.createVise) {
           vise = this.createVise({
-            spanX: s.sizeX + 10,
+            jawWidth: fixture.vise.jawWidth,
+            jawHeight: fixture.vise.jawHeight,
+            opening: fixture.vise.opening,
+            baseH: fixture.vise.baseH,
+            centerX: origin.x + s.sizeX / 2,
             yMin: origin.y,
             yMax: origin.y + s.sizeY,
             topZ: origin.z
           });
-          vise.position.x = origin.x + s.sizeX / 2;
           this.scene.add(vise);
         }
       }

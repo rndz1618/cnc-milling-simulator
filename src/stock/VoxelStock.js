@@ -15,7 +15,8 @@ export class VoxelStock {
     res = 1.0,
     originX = 0,
     originY = 0,
-    originZ = -20
+    originZ = -20,
+    colorRaw = null
   } = {}) {
     this.sizeX = sizeX;
     this.sizeY = sizeY;
@@ -24,6 +25,7 @@ export class VoxelStock {
     this.originX = originX;
     this.originY = originY;
     this.originZ = originZ;
+    this.colorRaw = colorRaw || COLOR_RAW;
 
     this.nx = Math.max(1, Math.ceil(sizeX / res));
     this.ny = Math.max(1, Math.ceil(sizeY / res));
@@ -178,7 +180,7 @@ export class VoxelStock {
             if (isSolid(nix, niy, niz)) continue;
 
             const outsideAABB = !this.inBounds(nix, niy, niz);
-            const col = outsideAABB ? COLOR_RAW : COLOR_CUT;
+            const col = outsideAABB ? this.colorRaw : COLOR_CUT;
 
             const cx = ix + 0.5 + f.d[0] * 0.5;
             const cy = iy + 0.5 + f.d[1] * 0.5;

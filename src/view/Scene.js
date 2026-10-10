@@ -251,15 +251,14 @@ export function createWorkZeroMarker(size = 20, label = 'G54') {
  * Template vise (ragum) — visual, parameter bisa diganti.
  * { spanX: panjang rahang, yMin/yMax: sisi stock yang dijepit, topZ: dasar stock }
  */
-export function createVise({ spanX = 140, yMin = -40, yMax = 40, topZ = -20, jawHeight = 28 } = {}) {
+export function createVise({ jawWidth = 150, jawHeight = 40, opening = 90, baseH = 40, centerX = 0, yMin = -45, yMax = 45, topZ = -20 } = {}) {
   const g = new THREE.Group();
   g.name = 'vise';
   const steel = new THREE.MeshStandardMaterial({ color: 0x707880, metalness: 0.65, roughness: 0.4 });
   const steelDark = new THREE.MeshStandardMaterial({ color: 0x4a5058, metalness: 0.6, roughness: 0.45 });
 
-  const depth = (yMax - yMin) + 34;
-  const baseH = 16;
-  const base = new THREE.Mesh(new THREE.BoxGeometry(spanX + 26, baseH, depth), steelDark);
+  const depth = opening + 34;
+  const base = new THREE.Mesh(new THREE.BoxGeometry(jawWidth + 26, baseH, depth), steelDark);
   base.position.set(0, topZ - baseH / 2, (yMin + yMax) / 2);
   base.castShadow = true;
   base.receiveShadow = true;
@@ -268,11 +267,12 @@ export function createVise({ spanX = 140, yMin = -40, yMax = 40, topZ = -20, jaw
   const jawT = 10;
   for (const side of [-1, 1]) {
     const y = side === -1 ? yMin - jawT / 2 : yMax + jawT / 2;
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(spanX + 16, jawHeight, jawT), steel);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(jawWidth + 16, jawHeight, jawT), steel);
     jaw.position.set(0, topZ + jawHeight / 2 - 6, y);
     jaw.castShadow = true;
     g.add(jaw);
   }
+  g.position.x = centerX;
   return g;
 }
 

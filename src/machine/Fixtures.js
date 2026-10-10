@@ -64,3 +64,8 @@ export function migrateLegacyStock(old) {
 export function materialColor(material) {
   return (MATERIALS[material] && MATERIALS[material].color) || MATERIALS.alum.color;
 }
+
+export function materialRGB(material) {
+  const n = parseInt(materialColor(material).replace('#', ''), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}

@@ -4,6 +4,7 @@
  */
 import { parseGCode } from '../src/machine/Parser.js';
 import { createMachineState, moveTarget, workCoords, outOfTravel } from '../src/machine/MachineState.js';
+import * as THREE from 'three';
 import { normalizeProfile, loadController } from '../src/controllers/Panel.js';
 
 let pass = 0, fail = 0;
@@ -490,6 +491,16 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const mgr = new FixtureManager({ scene: null, machine: createMachineState() });
   mgr.build([makeFixture({ wcs: 'G54' })]);
   ok(mgr.stockFor('G57') === null, 'stockFor WCS tanpa fixture → null');
+}
+
+// ---------- Tahap 7: vise ber-parameter ----------
+{
+  const { createVise } = await import('../src/view/Scene.js');
+  const g1 = createVise({ jawWidth: 100, jawHeight: 40, opening: 60, baseH: 40, centerX: 0, yMin: -30, yMax: 30, topZ: 0 });
+  const g2 = createVise({ jawWidth: 200, jawHeight: 40, opening: 60, baseH: 40, centerX: 0, yMin: -30, yMax: 30, topZ: 0 });
+  g1.updateMatrixWorld(true); g2.updateMatrixWorld(true);
+  const b1 = new THREE.Box3().setFromObject(g1), b2 = new THREE.Box3().setFromObject(g2);
+  ok((b2.max.x - b2.min.x) > (b1.max.x - b1.min.x), 'vise melebar dengan jawWidth');
 }
 
 // ---------- Laporan ----------
