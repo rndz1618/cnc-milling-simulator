@@ -23,7 +23,7 @@ npm install
 npm run dev      # dev server (Vite)
 npm run build    # production build → dist/
 npm run preview  # serve the production build
-npm test         # unit test 85 kasus (golden file: O20018)
+npm test         # unit test 92 kasus (golden file: O20018)
 ```
 
 Rencana pengembangan berikutnya: lihat [docs/PLAN-LANJUTAN.md](docs/PLAN-LANJUTAN.md).

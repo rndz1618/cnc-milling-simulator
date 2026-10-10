@@ -12,7 +12,7 @@ Bahasa kerja: **Bahasa Indonesia**, istilah teknis boleh English. Hindari nama/l
 ## Perintah
 
 - `npm run dev` — dev server (5173)
-- `npm test` — unit test (85 kasus, golden file O20018)
+- `npm test` — unit test (92 kasus, golden file O20018)
 - `npm run verify` — test + build + smoke browser headless (gerbang satu perintah)
 - `npm run build` / `npm run preview` — build produksi / serve dist
 
