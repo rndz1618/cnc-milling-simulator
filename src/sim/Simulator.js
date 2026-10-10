@@ -8,6 +8,7 @@
  * di-set) MENGHENKAN eksekusi — lanjut hanya setelah RESET.
  */
 import { moveTarget, outOfTravel, MACHINE_PROFILE, wcsOffset } from '../machine/MachineState.js';
+import { toolProfile, sampleCollision } from '../machine/ToolProfile.js';
 
 /** Waktu ganti tool (ATC) dalam detik simulasi. */
 const ATC_TIME = 1.0;
@@ -410,36 +411,32 @@ export class Simulator {
   }
 
   /**
-   * G00 yang menembus material = crash. Cek bukan hanya garis tengah tool —
-   * juga lingkar radius (badan tool bisa menabrak dinding slot yang baru
-   * dipotong). Sisa segmen sampai titik tabrak dipotong (kerusakan terlihat),
-   * lalu alarm + halt.
+   * G00 yang menembus material = crash. Cek profil tool bertingkat: flute kena →
+   * RAPID CRASH; shank/holder kena → HOLDER CRASH. Sisa segmen sampai titik
+   * tabrak dipotong (kerusakan terlihat), lalu alarm + halt.
    */
   _checkRapidCrash(p0, p1, m) {
     const st = this._stockFor(m);
     if (!st) return false;
+    const profile = toolProfile(this.machine.toolSpec || { dia: this.machine.toolDiameter || 12 });
     const dist = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2 + (p1.z - p0.z) ** 2);
     if (dist < 1e-6) return false;
-    const r = (this.machine.toolDiameter || 12) / 2;
-    const ringR = r * 0.85;
-    const ring = [[0, 0]];
-    for (let k = 0; k < 6; k++) {
-      const a = (Math.PI * 2 * k) / 6;
-      ring.push([Math.cos(a) * ringR, Math.sin(a) * ringR]);
-    }
-    const step = Math.max((st.res || 1) * 0.5, 0.5);
+    // Sub-sample segmen; tiap potongan dicek sampleCollision supaya tahu titik tabrak.
+    const step = Math.max(profile.r * 0.5, 0.5);
     const n = Math.max(1, Math.ceil(dist / step));
     for (let s = 1; s <= n; s++) {
       const t = s / n;
-      const px = p0.x + (p1.x - p0.x) * t;
-      const py = p0.y + (p1.y - p0.y) * t;
-      const pz = p0.z + (p1.z - p0.z) * t;
-      for (const [ox, oy] of ring) {
-        if (st.pointInStock(px + ox, py + oy, pz)) {
-          st.cutSegment(p0.x, p0.y, p0.z, px, py, pz, r);
-          this.alarm('RAPID CRASH — G00 MENABRAK MATERIAL (baris ' + m.line + ')', m.line);
-          return true;
-        }
+      const point = {
+        x: p0.x + (p1.x - p0.x) * t,
+        y: p0.y + (p1.y - p0.y) * t,
+        z: p0.z + (p1.z - p0.z) * t
+      };
+      const prevPoint = { x: p0.x + (p1.x - p0.x) * (t - 1 / n), y: p0.y + (p1.y - p0.y) * (t - 1 / n), z: p0.z + (p1.z - p0.z) * (t - 1 / n) };
+      const kind = sampleCollision(st.pointInStock.bind(st), prevPoint, point, profile);
+      if (kind) {
+        st.cutSegment(p0.x, p0.y, p0.z, point.x, point.y, point.z, profile.r);
+        this.alarm(kind + ' — G00 MENABRAK MATERIAL (baris ' + m.line + ')', m.line);
+        return true;
       }
     }
     return false;

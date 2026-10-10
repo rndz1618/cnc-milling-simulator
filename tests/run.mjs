@@ -616,6 +616,30 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
     'VoxelStock: setelah potong ada warna machined (cut)');
 }
 
+// ---------- Tahap 8: holder crash ----------
+{
+  const { Simulator } = await import('../src/sim/Simulator.js');
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const machine = createMachineState();
+  machine.toolDiameter = 12;
+  machine.toolSpec = { dia: 12, flute: 36, overall: 100 };
+  const stock = new VoxelStock({ sizeX: 160, sizeY: 40, sizeZ: 120, res: 4, originX: -80, originY: -20, originZ: -120 });
+  // Galian slot sempit (~16 lebar) di x=0,y=0 turun ke Z=-100: flute (Ø12) bisa masuk, holder (Ø22) TIDAK.
+  stock.cutSegment(0, 0, 0, 0, 0, -100, 8);
+  const alarms = [];
+  const sim = new Simulator({ stock, machine, onUpdate() {}, onLine() {}, onMessage() {},
+    onAlarm: (m) => alarms.push(m), onTool() {}, onToolComp() {}, onCoolant() {} });
+  machine.wcs.G54 = { x: 0, y: 0, z: 0 };
+  // Ujung tool turun ke Z=-80: flute ([-80,-44]) di dalam slot yang dibersihkan s/d -100 → aman;
+  // muka bawah holder di Z=-80+36+39.2=-4.8 (radius colletR=11) menabrak dinding slot → HOLDER CRASH.
+  sim.loadMoves(parseGCode('G00 G90 G54 X0 Y0 Z5\nG00 Z-80\nM30').moves, 0);
+  sim.play();
+  let g = 0; while (sim.playing && g++ < 100000) sim.tick(0.05);
+  ok(sim.state === 'alarm', 'Holder crash: rapid ke slot sempit → alarm');
+  ok((alarms[0] || '').includes('HOLDER CRASH'),
+    'Holder crash: pesan HOLDER CRASH (bukan RAPID), dapat: ' + (alarms[0] || '').slice(0, 60));
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
