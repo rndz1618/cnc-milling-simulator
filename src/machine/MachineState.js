@@ -32,6 +32,7 @@ export function createMachineState() {
     z: MACHINE_PROFILE.home.z,
     feed: 0,
     spindle: 0,
+    spindleTarget: 0,
     spindleOn: false,
     spindleDir: 3,
     coolant: false,

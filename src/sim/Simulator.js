@@ -46,6 +46,7 @@ export class Simulator {
     this.simSpeed = 1;
     this.feedOvr = 1;
     this.rapidOvr = 1;
+    this.holdReason = null;
     this.timer = 0;
     this.timerKind = null;
   }
@@ -64,6 +65,7 @@ export class Simulator {
     this.state = 'idle';
     this.timer = 0;
     this.timerKind = null;
+    this.holdReason = null;
     this._homeMachine();
     this.onLine(null);
     this.onUpdate();
@@ -78,6 +80,7 @@ export class Simulator {
     this.elapsed = 0;
     this.timer = 0;
     this.timerKind = null;
+    this.holdReason = null;
     this._homeMachine();
     this.stock.reset();
     this.stock._dirty = true;
@@ -89,6 +92,9 @@ export class Simulator {
     this.machine.x = MACHINE_PROFILE.home.x;
     this.machine.y = MACHINE_PROFILE.home.y;
     this.machine.z = MACHINE_PROFILE.home.z;
+    this.machine.spindle = 0;
+    this.machine.spindleTarget = 0;
+    this.machine.spindleOn = false;
     this.machine.dtg = { x: 0, y: 0, z: 0 };
   }
 
@@ -98,6 +104,7 @@ export class Simulator {
       this.onUpdate();
       return;
     }
+    this.holdReason = null;
     if (!this.moves.length) return;
     if (this.index >= this.moves.length) {
       this.stock.reset();
@@ -347,13 +354,31 @@ export class Simulator {
     if (m.wcs) this.machine.activeWcs = m.wcs;
     if (m.tool) this.machine.tool = m.tool;
     if (m.spindle != null) {
-      this.machine.spindle = m.spindle;
+      this.machine.spindleTarget = m.spindle;
       this.machine.spindleOn = m.spindle > 0;
-      if (m.spindleDir) this.machine.spindleDir = m.spindleDir;
     }
+    if (m.spindleDir) this.machine.spindleDir = m.spindleDir;
     this.machine.feed = m.type === 'rapid'
       ? MACHINE_PROFILE.rapidRate * this.rapidOvr
       : (m.f || this.machine.feed || 0);
+  }
+
+  /** Ramp spindle ke `spindleTarget` (linear, time constant penuh ~1.5 s). */
+  updateSpindle(dt) {
+    const target = this.machine.spindleTarget || 0;
+    const rate = (MACHINE_PROFILE.maxRpm / 1.5) * dt;
+    if (this.machine.spindle < target) {
+      this.machine.spindle = Math.min(target, this.machine.spindle + rate);
+    } else if (this.machine.spindle > target) {
+      this.machine.spindle = Math.max(target, this.machine.spindle - rate);
+    }
+    this.machine.spindleOn = target > 0;
+  }
+
+  /** FEED HOLD — hentikan mid-blok, pertahankan progress; lanjut via play(). */
+  feedHold() {
+    this.holdReason = 'feed';
+    this.pause();
   }
 
   /**

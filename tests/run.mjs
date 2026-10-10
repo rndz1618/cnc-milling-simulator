@@ -356,6 +356,34 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(sim2.timerKind === 'atc' && tools[0] === 2, 'ATC: M6 memicu timer + onTool');
 }
 
+// ---------- Tahap 6: spindle ramp + feed hold ----------
+{
+  const machine = createMachineState();
+  const stock = new VoxelStock({ sizeX: 100, sizeY: 100, sizeZ: 20, res: 2, originX: -50, originY: -50, originZ: -20 });
+  stock.updateMesh({ add() {}, remove() {}, traverse() {} }, true);
+  const sim = new Simulator({
+    stock, machine, onUpdate() {}, onLine() {}, onMessage() {},
+    onAlarm() {}, onTool() {}, onToolComp() {}, onCoolant() {}
+  });
+  sim.dryRun = true;
+  machine.spindleTarget = 6000;
+  sim.updateSpindle(0.1);
+  ok(machine.spindle > 0 && machine.spindle < 6000, 'ramp: naik bertahap, belum penuh');
+  for (let i = 0; i < 100; i++) sim.updateSpindle(0.05);
+  eq(machine.spindle, 6000, 'ramp: mencapai target');
+  sim.loadMoves(parseGCode('G0 X-100\nG0 X0\nM30').moves, 0);
+  sim.play();
+  sim.tick(0.01);
+  const before = sim.progress;
+  sim.feedHold();
+  ok(sim.state === 'hold' && sim.holdReason === 'feed', 'feed hold → state hold + alasan');
+  ok(sim.progress >= before, 'feed hold: progress dipertahankan');
+  sim.play();
+  let g = 0;
+  while (sim.playing && g++ < 100000) sim.tick(0.05);
+  ok(sim.index >= sim.moves.length, 'resume: menyelesaikan seluruh move');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
