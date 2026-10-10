@@ -70,7 +70,8 @@ try {
       modes: document.querySelectorAll('#modeTabs .mode-tab').length,
       dro: document.querySelectorAll('#droTabs .dro-tab').length,
       sk: document.querySelectorAll('#softkeys .sk').length,
-      linesVisible: vis('#gcodeLines')
+      linesVisible: vis('#gcodeLines'),
+      feedHoldLabel: document.querySelector('#btnPause')?.textContent?.trim() || ''
     };
     click('#modeTabs .mode-tab[data-mode="jog"]');
     out.jogVisible = vis('#panelJog');
@@ -87,14 +88,22 @@ try {
   });
 
   // Jalankan program (25x) lewat DOM; overlay CURNT CMDS live update.
+  // FEED HOLD: klik Play lalu Pause seketika → state hold + flag harus muncul.
   await page.evaluate(() => {
     document.querySelector('.ovr-btn[data-ovr="sim"][data-val="25"]').click();
     document.querySelector('#btnPlay').click();
+    document.querySelector('#btnPause').click();
   });
+  const hold = await page.evaluate(() => ({
+    flags: document.querySelector('#sbFlags')?.textContent || '',
+    status: document.querySelector('#simStatus')?.textContent
+  }));
+  await page.evaluate(() => document.querySelector('#btnPlay').click());
   await page.waitForTimeout(3000);
   const run = await page.evaluate(() => ({
     status: document.querySelector('#simStatus')?.textContent,
     stock: document.querySelector('#stockLeft')?.textContent,
+    hdrSpindle: document.querySelector('#hdrSpindle')?.textContent,
     cmdsAfter: document.querySelector('#cmdsPanelBody')?.innerText || ''
   }));
 
@@ -119,8 +128,10 @@ try {
   const cmdsVisible = shell.cmdsVisible;
   const cmdsRows = shell.cmdsRows;
   const cmdsBefore = shell.cmdsBefore;
+  const feedHoldLabel = shell.feedHoldLabel;
   const status = run.status;
   const stock = run.stock;
+  const hdrSpindle = run.hdrSpindle;
   const cmdsAfter = run.cmdsAfter;
 
 
@@ -135,6 +146,9 @@ try {
   if (!['RUN', 'DONE'].includes(status)) problems.push('status=' + status);
   if (!cmdsVisible || cmdsRows < 5) problems.push('CURNT CMDS tidak tampil (visible=' + cmdsVisible + ' rows=' + cmdsRows + ')');
   if (cmdsBefore === cmdsAfter) problems.push('CURNT CMDS statis — tidak update saat proses berjalan');
+  if (!feedHoldLabel.includes('FEED HOLD')) problems.push('tombol FEED HOLD tidak ada (label=' + feedHoldLabel + ')');
+  if (!hold.flags.includes('FEED HOLD')) problems.push('flag FEED HOLD tidak tampil (flags=' + hold.flags + ')');
+  if (!/^S\d+/.test(hdrSpindle || '')) problems.push('RPM aktual tidak tampil (hdrSpindle=' + hdrSpindle + ')');
   if (errors.length) problems.push('pageerror: ' + errors[0]);
   if (problems.length) throw new Error(problems.join('; '));
   console.log('smoke OK — glines=' + glines + ' status=' + status + ' stock=' + stock);

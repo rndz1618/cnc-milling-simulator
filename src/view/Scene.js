@@ -176,7 +176,26 @@ export function setToolGeometry(toolMesh, spec) {
 
 /** CNC (x,y,z) mesin → Three.js (x, z, y) — sumbu Y Three.js = Z mesin. */
 export function setToolPosition(toolMesh, mx, my, mz) {
-  toolMesh.position.set(mx, mz, my);
+  toolMesh.position.set(mx, mz + (toolMesh.userData.liftZ || 0), my);
+}
+
+/** Animasi ganti tool (ATC) — angkat lalu turun ~15 mm; visual saja. */
+export function animateToolChange(toolMesh) {
+  if (!toolMesh) return;
+  if (toolMesh.userData.atcRaf) cancelAnimationFrame(toolMesh.userData.atcRaf);
+  const t0 = performance.now();
+  const dur = 600;
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    toolMesh.userData.liftZ = Math.sin(p * Math.PI) * 15;
+    if (p < 1) {
+      toolMesh.userData.atcRaf = requestAnimationFrame(step);
+    } else {
+      toolMesh.userData.liftZ = 0;
+      toolMesh.userData.atcRaf = null;
+    }
+  };
+  toolMesh.userData.atcRaf = requestAnimationFrame(step);
 }
 
 /** Sprite label teks (canvas) — selalu terlihat walau tertutup geometri. */

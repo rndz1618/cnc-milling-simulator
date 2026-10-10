@@ -18,6 +18,7 @@ import {
   createToolMesh,
   setToolGeometry,
   setToolPosition,
+  animateToolChange,
   buildToolpathLines,
   createWorkZeroMarker,
   createVise
@@ -329,6 +330,7 @@ const sim = new Simulator({
   },
   onTool: (t) => {
     if (toolTable[t]) applyToolFromTable(t);
+    animateToolChange(toolMesh);
   },
   onToolComp: (h) => {
     if (!h) {
@@ -557,6 +559,7 @@ function updateStatusBar() {
   if (sim.dryRun) flags.push('DRY RUN');
   if (sim.state === 'alarm') flags.push('ALARM');
   else if (sim.playing) flags.push('CYCLE ON');
+  else if (sim.state === 'hold' && sim.holdReason === 'feed') flags.push('FEED HOLD');
   if ($('sbFlags')) $('sbFlags').textContent = flags.length ? flags.join(' · ') : '—';
   if ($('hdrMode')) $('hdrMode').textContent = currentMode.toUpperCase();
 }
@@ -818,7 +821,7 @@ if ($('btnPlay')) $('btnPlay').addEventListener('click', () => {
   if (sim.dryRun) markTrain('dryrun');
   else markTrain('cyclestart');
 });
-if ($('btnPause')) $('btnPause').addEventListener('click', () => { sim.pause(); refreshUI(); });
+if ($('btnPause')) $('btnPause').addEventListener('click', () => { sim.feedHold(); refreshUI(); });
 if ($('btnStop')) $('btnStop').addEventListener('click', () => {
   sim.stop();
   disposeGroup(trailGroup);
@@ -1179,6 +1182,7 @@ function animate(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   sim.tick(dt);
+  sim.updateSpindle(dt);
   stock.updateMesh(scene);
   trailAcc += dt;
   if (sim.playing && trailAcc > 0.1) {
