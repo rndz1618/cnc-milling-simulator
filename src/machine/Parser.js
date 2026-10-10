@@ -175,7 +175,7 @@ function blocksToMoves(blocks) {
     const gCodes = [];
     const mCodes = [];
     let nx = null, ny = null, nz = null, nf = null, ns = null, nt = null;
-    let ni = null, nj = null, nk = null, nr = null, nq = null, np = null, nh = null, nl = null;
+    let ni = null, nj = null, nk = null, nr = null, nq = null, np = null, nh = null, nl = null, nd = null;
     let sawG28 = false, sawG53 = false, sawCycleWord = false, group1 = false;
 
     for (const t of tokens) {
@@ -200,7 +200,8 @@ function blocksToMoves(blocks) {
         case 'P': np = val; break;
         case 'H': nh = val; break;
         case 'L': nl = val; break;
-        default: break; // O, D, dsb. — diterima parser, tidak berpengaruh gerak
+        case 'D': nd = val; break;
+        default: break; // O, dsb. — diterima parser, tidak berpengaruh gerak
       }
     }
 
@@ -221,9 +222,14 @@ function blocksToMoves(blocks) {
       } else if (g === 20) units = 'in';
       else if (g === 21) units = 'mm';
       else if (g === 28) sawG28 = true;
-      else if (g === 40) { /* cutter comp cancel — noop */ }
-      else if (g === 41 || g === 42) {
-        blockAlarm = { code: 'G' + g, msg: 'CUTTER COMP G' + g + ' NOT SUPPORTED (belum diimplementasi)', line: blk.lineNum };
+      else if (g === 40) {
+        moves.push({ type: 'comp', side: null, d: nd != null ? nd : (tool || null), line: blk.lineNum, raw: blk.raw.trim() });
+      } else if (g === 41 || g === 42) {
+        if (plane !== 17) {
+          blockAlarm = { code: 'G' + g, msg: 'CUTTER COMP HANYA G17', line: blk.lineNum };
+        } else {
+          moves.push({ type: 'comp', side: g === 41 ? 'left' : 'right', d: nd != null ? nd : (tool || null), line: blk.lineNum, raw: blk.raw.trim() });
+        }
       } else if (g === 43) {
         if (nh == null) {
           blockAlarm = { code: 'G43', msg: 'G43 TANPA H — TOOL LENGTH OFFSET HILANG', line: blk.lineNum };

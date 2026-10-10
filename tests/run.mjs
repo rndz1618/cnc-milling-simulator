@@ -261,6 +261,17 @@ ok(normalizeProfile({ softkeys: [{ f: 2, label: 'Z', action: 'nope' }] }).softke
   ok(threw, 'loadController: reject saat HTTP gagal');
 }
 
+// ---------- Tahap 6: cutter comp entry ----------
+const comp = parseGCode('T1 M6\nG0 X0 Y0\nG41 D1\nG1 X10 F100\nG40\nM30');
+const compEntries = comp.moves.filter((m) => m.type === 'comp');
+eq(compEntries.map((e) => e.side), ['left', null], 'G41 → comp left; G40 → null');
+eq(compEntries[0].d, 1, 'G41 D1 → d=1');
+ok(comp.alarms.length === 0, 'G41/G42 tidak lagi men-alarm');
+const compDefault = parseGCode('T3 M6\nG41\nG1 X5 F100\nM30');
+eq(compDefault.moves.find((m) => m.type === 'comp').d, 3, 'G41 tanpa D → default tool aktif');
+const compPlane = parseGCode('G18 G41 D1\nG1 X5 F100\nM30');
+ok(compPlane.alarms.some((a) => a.code === 'G41'), 'G41 di plane G18 → alarm');
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
