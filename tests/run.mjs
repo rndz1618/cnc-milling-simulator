@@ -545,6 +545,33 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(A.remainingRatio < B.remainingRatio, 'potongan G54 lebih dalam → sisa lebih kecil (' + A.remainingRatio + ' vs ' + B.remainingRatio + ')');
 }
 
+// ---------- Tahap 8: profil tool ----------
+{
+  const { toolProfile, radiusAt, sampleCollision } = await import('../src/machine/ToolProfile.js');
+  const p = toolProfile({ dia: 12, flute: 36, overall: 100 });
+  eq(p.r, 6, 'ToolProfile: r = dia/2');
+  eq(p.fluteLen, 36, 'ToolProfile: fluteLen');
+  eq(p.shankLen, 39.2, 'ToolProfile: shankLen = overall-flute-collet-stub');
+  eq(p.shankR, 6.12, 'ToolProfile: shankR = max(r*1.02,6)');
+  eq(p.colletR, 11, 'ToolProfile: colletR = max(shankR*1.3,11)');
+  eq(radiusAt(p, 10), 6, 'ToolProfile: radius di flute');
+  eq(radiusAt(p, 40), 6.12, 'ToolProfile: radius di shank');
+  eq(radiusAt(p, 90), 11, 'ToolProfile: radius di holder');
+  eq(radiusAt(p, 200), null, 'ToolProfile: di atas overall → null');
+
+  // Holdout: hanya holder yang kena (flute di atas stok) → HOLDER CRASH
+  const solid = () => true;                       // semua titik = material
+  const high = () => false;                       // semua titik kosong
+  eq(sampleCollision(high, { x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }, p), null,
+    'ToolProfile: di udara → null');
+  eq(sampleCollision(solid, { x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }, p), 'RAPID CRASH',
+    'ToolProfile: flute kena → RAPID CRASH');
+  // flute ([100,136]) di bawah material; holder bawah (100+75.2=175.2) kena material-atas
+  const holderOnly = (x, y, z) => z > 140;       // material hanya tinggi di atas
+  eq(sampleCollision(holderOnly, { x: 0, y: 0, z: 100 }, { x: 10, y: 0, z: 100 }, p), 'HOLDER CRASH',
+    'ToolProfile: hanya holder kena → HOLDER CRASH');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {
