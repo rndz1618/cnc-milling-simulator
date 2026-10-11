@@ -682,6 +682,31 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   svcErr.dispose();
 }
 
+// ---------- Tahap 8: VoxelStock async mesh ----------
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const scene = { children: [], add(m) { this.children.push(m); }, remove(m) { this.children = this.children.filter((x) => x !== m); } };
+  const calls = [];
+  const fake = {
+    request(spec) { calls.push(spec); return Promise.resolve({ position: new Float32Array([0,0,0,1,0,0,0,1,0]), normal: new Float32Array([0,1,0,0,1,0,0,1,0]), color: new Float32Array([1,1,1,1,1,1,1,1,1]) }); },
+    dispose() {}
+  };
+  const s = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0, meshService: fake });
+  s.updateMesh(scene, true);
+  await new Promise((r) => setTimeout(r, 0));    // tunggu microtask reply
+  ok(calls.length === 1, 'VoxelStock async: kirim 1 request ke service');
+  ok(!!s.mesh && !!s.mesh.geometry, 'VoxelStock async: mesh terpasang dari reply');
+  ok(s.grid.every ? s.grid.length === 8 : true, 'VoxelStock async: grid asli tetap utuh (bukan transfer)');
+  ok(s.grid.reduce((a, b) => a + b, 0) > 0, 'VoxelStock async: grid asli tidak kehilangan data');
+
+  // service gagal → fallback sinkron (mesh tetap ada)
+  const bad = { request() { return Promise.reject(new Error('x')); }, dispose() {} };
+  const s2 = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0, meshService: bad });
+  s2.updateMesh(scene, true);
+  await new Promise((r) => setTimeout(r, 0));
+  ok(!!s2.mesh && !!s2.mesh.geometry, 'VoxelStock async: service gagal → fallback sinkron');
+}
+
 // ---------- Laporan ----------
 console.log('PASS:', pass, ' FAIL:', fail);
 if (failures.length) {

@@ -16,7 +16,8 @@ export class VoxelStock {
     originX = 0,
     originY = 0,
     originZ = -20,
-    colorRaw = null
+    colorRaw = null,
+    meshService = null
   } = {}) {
     this.sizeX = sizeX;
     this.sizeY = sizeY;
@@ -45,6 +46,8 @@ export class VoxelStock {
     this._dirty = true;
     this._lastRebuild = 0;
     this.rebuildIntervalMs = 80;
+    this.meshService = meshService || null;
+    this._meshToken = 0;
 
     this.fill();
   }
@@ -150,6 +153,15 @@ export class VoxelStock {
     return changed;
   }
 
+  _geoFrom(g) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(g.color, 3));
+    geo.computeBoundingSphere();
+    return geo;
+  }
+
   buildGeometry() {
     const g = buildGreedyGeometry({
       grid: this.grid,
@@ -163,7 +175,6 @@ export class VoxelStock {
       colorRaw: this.colorRaw
     });
 
-    const geo = new THREE.BufferGeometry();
     if (!g) {
       const box = new THREE.BoxGeometry(this.sizeX, this.sizeZ, this.sizeY);
       box.translate(
@@ -173,21 +184,10 @@ export class VoxelStock {
       );
       return box;
     }
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(g.position, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.normal, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(g.color, 3));
-    geo.computeBoundingSphere();
-    return geo;
+    return this._geoFrom(g);
   }
 
-  updateMesh(scene, force = false) {
-    if (!this._dirty && !force) return;
-    const now = performance.now();
-    if (!force && now - this._lastRebuild < this.rebuildIntervalMs) return;
-    this._lastRebuild = now;
-    this._dirty = false;
-
-    const geo = this.buildGeometry();
+  _swapGeometry(geo, scene) {
     if (!this.mesh) {
       this.mesh = new THREE.Mesh(geo, this.material);
       this.mesh.castShadow = true;
@@ -200,7 +200,40 @@ export class VoxelStock {
     }
   }
 
+  updateMesh(scene, force = false) {
+    if (!this._dirty && !force) return;
+    const now = performance.now();
+    if (!force && now - this._lastRebuild < this.rebuildIntervalMs) return;
+    this._lastRebuild = now;
+    this._dirty = false;
+
+    if (this.meshService) {
+      const token = ++this._meshToken;
+      this.meshService.request({
+        grid: this.grid.slice(),
+        nx: this.nx,
+        ny: this.ny,
+        nz: this.nz,
+        originX: this.originX,
+        originY: this.originY,
+        originZ: this.originZ,
+        res: this.res,
+        colorRaw: this.colorRaw
+      }).then((g) => {
+        if (token !== this._meshToken) return;   // reply usang, jangan timpa mesh terbaru
+        if (!g || !g.position) { this._swapGeometry(this.buildGeometry(), scene); return; }
+        this._swapGeometry(this._geoFrom(g), scene);
+      }).catch(() => {
+        if (token !== this._meshToken) return;
+        this._swapGeometry(this.buildGeometry(), scene);   // service gagal → fallback sinkron
+      });
+    } else {
+      this._swapGeometry(this.buildGeometry(), scene);
+    }
+  }
+
   dispose(scene) {
+    this._meshToken++;   // batalkan reply tertunda
     if (this.mesh) {
       scene.remove(this.mesh);
       this.mesh.geometry.dispose();
