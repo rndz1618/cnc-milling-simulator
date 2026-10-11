@@ -3,10 +3,11 @@ import { stockOriginFor, materialRGB } from '../machine/Fixtures.js';
 import { wcsOffset } from '../machine/MachineState.js';
 
 export class FixtureManager {
-  constructor({ scene = null, machine, createVise = null } = {}) {
+  constructor({ scene = null, machine, createVise = null, meshService = null } = {}) {
     this.scene = scene;
     this.machine = machine;
     this.createVise = createVise;
+    this.meshService = meshService;
     this.entries = [];
     this.byWcs = new Map();
   }
@@ -19,7 +20,8 @@ export class FixtureManager {
       const stock = new VoxelStock({
         sizeX: s.sizeX, sizeY: s.sizeY, sizeZ: s.sizeZ,
         originX: origin.x, originY: origin.y, originZ: origin.z,
-        colorRaw: materialRGB(s.material)
+        colorRaw: materialRGB(s.material),
+        meshService: this.meshService
       });
       let vise = null;
       if (this.scene) {

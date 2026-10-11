@@ -8,6 +8,7 @@ import {
 } from './machine/Fixtures.js';
 import { edgePlane, contactOffset, checkContact, surfaceCoord } from './machine/TouchOff.js';
 import { FixtureManager } from './sim/FixtureManager.js';
+import { createMeshService } from './stock/MeshService.js';
 import {
   createMachineState,
   workCoords,
@@ -115,7 +116,25 @@ const toolTable = {
 
 // ---------- State ----------
 const machine = createMachineState();
-const fixtures = new FixtureManager({ scene, machine, createVise });
+
+// Service worker greedy-mesh (Tahap 8). `__meshWorkerActive` di-set dari hasil
+// ROUND-TRIP probe nyata (geometri 2×2×2 → balasan buffer), bukan sekadar
+// keberadaan `Worker`: verify.mjs menunggu flag ini ter-definisi sebagai gerbang.
+const meshService = (typeof Worker !== 'undefined') ? createMeshService() : null;
+if (meshService) {
+  meshService.request({
+    grid: new Uint8Array(8).fill(1), nx: 2, ny: 2, nz: 2,
+    originX: 0, originY: 0, originZ: 0, res: 1
+  }).then((g) => {
+    window.__meshWorkerActive = !!(g && g.position);
+  }).catch(() => {
+    window.__meshWorkerActive = false;
+  });
+} else {
+  window.__meshWorkerActive = false;
+}
+
+const fixtures = new FixtureManager({ scene, machine, createVise, meshService });
 let fixtureState = [fixtureFromStockSetup()];
 fixtures.build(normalizeFixtures(fixtureState));
 let stock = fixtures.stockFor('G54');
@@ -298,6 +317,7 @@ function applyToolFromTable(toolNum) {
   machine.tool = toolNum;
   machine.toolLength = t.length;
   machine.toolDiameter = t.dia;
+  machine.toolSpec = { dia: t.dia, flute: t.flute, overall: t.overall };   // dipakai _checkRapidCrash (HOLDER CRASH)
   setToolGeometry(toolMesh, {
     diameter: t.dia, flute: t.flute, overall: t.overall
   });

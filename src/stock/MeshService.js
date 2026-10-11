@@ -5,14 +5,18 @@
  */
 
 export function createMeshService({ WorkerCtor } = {}) {
-  // WorkerCtor bisa disuntik agar bisa diuji di Node (tanpa browser).
-  const Ctor = WorkerCtor !== undefined
-    ? WorkerCtor
-    : (typeof Worker !== 'undefined' ? Worker : null);
-
   let worker = null;
-  if (Ctor) {
-    worker = new Ctor(new URL('./meshWorker.js', import.meta.url), { type: 'module' });
+  if (WorkerCtor === undefined) {
+    // Jalur default WAJIB pakai literal `new Worker(...)` supaya Vite mendeteksi
+    // dan mem-bundle meshWorker.js sebagai worker module di build produksi.
+    // Dengan Ctor berupa variabel, Vite tidak mengenali polanya → worker tak
+    // ter-bundle dan fitur worker mati diam-diam.
+    if (typeof Worker !== 'undefined') {
+      worker = new Worker(new URL('./meshWorker.js', import.meta.url), { type: 'module' });
+    }
+  } else if (WorkerCtor) {
+    // WorkerCtor disuntik agar bisa diuji di Node; null eksplisit → tanpa worker.
+    worker = new WorkerCtor(new URL('./meshWorker.js', import.meta.url), { type: 'module' });
   }
 
   const pending = new Map();

@@ -53,6 +53,10 @@ try {
   await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'load' });
   await page.waitForTimeout(1500);
 
+  // Gerbang JUJUR worker: window.__meshWorkerActive di-set setelah probe round-trip
+  // ke Web Worker selesai (bukan sekadar typeof Worker). Tunggu sampai terdefinisi.
+  await page.waitForFunction(() => window.__meshWorkerActive !== undefined, { timeout: 15000 });
+
   // Tahap 5 lanjutan: shell panel dirender dari controller JSON.
   // Catatan: klik Playwright sangat lambat di GL software; semua cek dikerjakan
   // di dalam satu page.evaluate (round-trip minimal).
@@ -104,7 +108,8 @@ try {
     status: document.querySelector('#simStatus')?.textContent,
     stock: document.querySelector('#stockLeft')?.textContent,
     hdrSpindle: document.querySelector('#hdrSpindle')?.textContent,
-    cmdsAfter: document.querySelector('#cmdsPanelBody')?.innerText || ''
+    cmdsAfter: document.querySelector('#cmdsPanelBody')?.innerText || '',
+    meshWorker: window.__meshWorkerActive === true
   }));
 
   // Regresi MDI: satu blok via DOM, tanpa pageerror.
@@ -233,6 +238,7 @@ try {
   if (to.disabledAfter !== false) problems.push('#toStart harus enabled saat kontak (disabledAfter=' + to.disabledAfter + ')');
   if (!(Math.abs(to.g54x + 50) < 0.05)) problems.push('WCS G54 X tidak ter-set touch-off (x=' + to.g54x + ', harap edge kiri stok default -50)');
   if (!/Touch-off set/.test(to.msg || '')) problems.push('pesan touch-off tidak muncul (msg=' + to.msg + ')');
+  if (!run.meshWorker) problems.push('mesh worker tidak aktif (window.__meshWorkerActive)');
   if (errors.length) problems.push('pageerror: ' + errors[0]);
   if (problems.length) throw new Error(problems.join('; '));
   console.log('smoke OK — glines=' + glines + ' status=' + status + ' stock=' + stock);
