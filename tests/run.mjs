@@ -570,6 +570,14 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const holderOnly = (x, y, z) => z > 140;       // material hanya tinggi di atas
   eq(sampleCollision(holderOnly, { x: 0, y: 0, z: 100 }, { x: 10, y: 0, z: 100 }, p), 'HOLDER CRASH',
     'ToolProfile: hanya holder kena → HOLDER CRASH');
+  // Regresi: flute harus dicek di ujung, bukan hanya tengah → plunge vertikal.
+  eq(sampleCollision(solid, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }, p), 'RAPID CRASH',
+    'ToolProfile: plunge vertikal ke stok pejal → RAPID CRASH');
+  // Stok tipis 5 mm (muka atas z=0, bawah z=-5): bug lama (probe tengah flute)
+  // melewatkannya; probe di ujung flute harus menangkapnya.
+  const shallow = (x, y, z) => z > -5 && z < 0;
+  eq(sampleCollision(shallow, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -5 }, p), 'RAPID CRASH',
+    'ToolProfile: embed flute dangkal (tip turun 5 mm) → RAPID CRASH');
 }
 
 // ---------- Tahap 8: greedy mesher ----------

@@ -29,6 +29,15 @@ async function waitFor(url, ms = 20000) {
   return false;
 }
 
+// Probe sekali: true bila sudah ada server yang melayani di url.
+function probe(url, ms = 800) {
+  return new Promise((res) => {
+    const req = get(url, (r) => { res(r.statusCode === 200); r.resume(); });
+    req.on('error', () => res(false));
+    req.setTimeout(ms, () => { req.destroy(); res(false); });
+  });
+}
+
 // 1) unit test + 2) build
 log('npm test');
 run('npm', ['test']);
@@ -38,8 +47,16 @@ run('npm', ['run', 'build']);
 // 3) smoke headless: serve dist → load → Cycle Start 25x → tanpa pageerror
 log('smoke browser headless');
 const PORT = 4199;
+// Fail-closed: bila port sudah dilayani (preview orphan/basi), abort — jangan
+// menguji dist lama tanpa sadar.
+if (await probe('http://localhost:' + PORT + '/')) {
+  console.error('GAGAL: port ' + PORT + ' sudah melayani (preview orphan/basi) — matikan dulu.');
+  process.exit(1);
+}
+// detached: proses jadi group leader supaya seluruh anak (vite + grandchild)
+// bisa dimatikan sekaligus di finally.
 const preview = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-  stdio: 'ignore', detached: false
+  stdio: 'ignore', detached: true
 });
 try {
   const up = await waitFor('http://localhost:' + PORT + '/');
@@ -55,7 +72,10 @@ try {
 
   // Gerbang JUJUR worker: window.__meshWorkerActive di-set setelah probe round-trip
   // ke Web Worker selesai (bukan sekadar typeof Worker). Tunggu sampai terdefinisi.
-  await page.waitForFunction(() => window.__meshWorkerActive !== undefined, { timeout: 15000 });
+  // Arg ke-2 signature Playwright = `arg`; opsi WAJIB di arg ke-3, kalau tidak
+  // timeout diabaikan dan verify bergantung pada default 30s (goyah di GL software).
+  // Sandbox lambat: inisialisasi main-thread + worker round-trip bisa ~30s.
+  await page.waitForFunction(() => window.__meshWorkerActive !== undefined, null, { timeout: 90000 });
 
   // Tahap 5 lanjutan: shell panel dirender dari controller JSON.
   // Catatan: klik Playwright sangat lambat di GL software; semua cek dikerjakan
@@ -243,6 +263,6 @@ try {
   if (problems.length) throw new Error(problems.join('; '));
   console.log('smoke OK — glines=' + glines + ' status=' + status + ' stock=' + stock);
 } finally {
-  preview.kill('SIGTERM');
+  try { process.kill(-preview.pid, 'SIGTERM'); } catch {}
 }
 log('VERIFY HIJAU ✓');

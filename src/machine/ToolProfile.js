@@ -39,21 +39,33 @@ function discHits(pointInStock, cx, cy, cz, radius) {
 
 /**
  * Uji kolisi tool sepanjang segmen gerak p0→p1 (titik ujung tool).
- * Flute diperiksa lebih dulu; bila flute tidak kena tapi shank/holder kena → HOLDER CRASH.
+ * Flute diperiksa di ujung (h≈0) & tengah flute supaya tiap bagian flute
+ * yang menyentuh material terdeteksi; shank/holder diperiksa di muka
+ * bawahnya (muka terendah tiap bagian). Flute lebih dulu; bila flute tidak
+ * kena tapi shank/holder kena → HOLDER CRASH.
  */
 export function sampleCollision(pointInStock, p0, p1, profile) {
   const dist = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
   if (dist < 1e-6) return null;
   const step = Math.max(profile.r * 0.5, 0.5);
   const n = Math.max(1, Math.ceil(dist / step));
+  // Tinggi probe relatif ujung tool. radiusAt di batas mengembalikan bagian
+  // bawah, jadi geser sedikit agar muka bawah shank/holder memakai radius
+  // bagiannya sendiri (muka bawah holder = colletR).
+  const fluteH = [0, profile.fluteLen / 2];
+  const bodyH = [profile.fluteLen, profile.fluteLen + profile.shankLen];
+  const radiusOf = (h) => radiusAt(profile, h + 1e-6);
   for (let s = 0; s <= n; s++) {
     const t = s / n;
     const x = p0.x + (p1.x - p0.x) * t;
     const y = p0.y + (p1.y - p0.y) * t;
     const z = p0.z + (p1.z - p0.z) * t;
-    if (discHits(pointInStock, x, y, z + profile.fluteLen / 2, profile.r)) return 'RAPID CRASH';
-    if (discHits(pointInStock, x, y, z + profile.fluteLen + profile.shankLen, profile.shankR)) return 'HOLDER CRASH';
-    if (discHits(pointInStock, x, y, z + profile.fluteLen + profile.shankLen, profile.colletR)) return 'HOLDER CRASH';
+    for (const h of fluteH) {
+      if (discHits(pointInStock, x, y, z + h, radiusOf(h))) return 'RAPID CRASH';
+    }
+    for (const h of bodyH) {
+      if (discHits(pointInStock, x, y, z + h, radiusOf(h))) return 'HOLDER CRASH';
+    }
   }
   return null;
 }
