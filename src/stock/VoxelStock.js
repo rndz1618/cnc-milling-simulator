@@ -48,6 +48,7 @@ export class VoxelStock {
     this.rebuildIntervalMs = 80;
     this.meshService = meshService || null;
     this._meshToken = 0;
+    this._meshPending = false;
 
     this.fill();
   }
@@ -204,11 +205,17 @@ export class VoxelStock {
     if (!this._dirty && !force) return;
     const now = performance.now();
     if (!force && now - this._lastRebuild < this.rebuildIntervalMs) return;
+    // Satu permintaan in-flight saja: worker greedy-mesh jauh lebih lambat dari
+    // rebuildIntervalMs, jadi mengirim tiap interval akan menumpuk antrean DAN
+    // membuat balasan selalu "basi" (mesh hanya ter-update saat cutting berhenti).
+    // Jangan reset _dirty saat menunggu — biar cut selama in-flight tetap diproses.
+    if (this.meshService && this._meshPending && !force) return;
     this._lastRebuild = now;
     this._dirty = false;
 
     if (this.meshService) {
       const token = ++this._meshToken;
+      this._meshPending = true;
       this.meshService.request({
         grid: this.grid.slice(),
         nx: this.nx,
@@ -220,11 +227,13 @@ export class VoxelStock {
         res: this.res,
         colorRaw: this.colorRaw
       }).then((g) => {
-        if (token !== this._meshToken) return;   // reply usang, jangan timpa mesh terbaru
+        if (token !== this._meshToken) return;   // dibatalkan (dispose/resize)
+        this._meshPending = false;
         if (!g || !g.position) { this._swapGeometry(this.buildGeometry(), scene); return; }
         this._swapGeometry(this._geoFrom(g), scene);
       }).catch(() => {
         if (token !== this._meshToken) return;
+        this._meshPending = false;
         this._swapGeometry(this.buildGeometry(), scene);   // service gagal → fallback sinkron
       });
     } else {

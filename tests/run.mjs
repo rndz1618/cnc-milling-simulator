@@ -721,6 +721,38 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(!!s2.mesh && !!s2.mesh.geometry, 'VoxelStock async: service gagal → fallback sinkron');
 }
 
+// ---------- Bugfix: mesh tetap ter-update SAAT cutting kontinu (worker async) ----------
+// Regresi: token "latest-wins" lama membuang SETIAP balasan worker selama ada
+// permintaan lebih baru yang dikirim. Karena worker ~jauh lebih lambat dari
+// rebuildIntervalMs, saat cutting kontinu semua balasan basi → mesh hanya
+// ter-update ketika cutting berhenti (akhir program). Test: dengan service
+// lambat + cutting kontinu, mesh harus ter-update beberapa kali, bukan 0x.
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const { buildGreedyGeometry } = await import('../src/stock/greedyMesh.js');
+  const scene = { children: [], add(m) { this.children.push(m); }, remove(m) { this.children = this.children.filter((x) => x !== m); } };
+  const DELAY = 40;
+  const slow = {
+    request(spec) { return new Promise((res) => setTimeout(() => res(buildGreedyGeometry(spec)), DELAY)); },
+    dispose() {}
+  };
+  const s = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 2, originX: 0, originY: 0, originZ: -10, meshService: slow });
+  s.rebuildIntervalMs = 5;
+  let swaps = 0;
+  const origSwap = s._swapGeometry.bind(s);
+  s._swapGeometry = (g, sc) => { swaps++; return origSwap(g, sc); };
+  s.updateMesh(scene, true);
+  await new Promise((r) => setTimeout(r, DELAY + 20));
+  ok(!!s.mesh && !!s.mesh.geometry, 'mesh kontinu: mesh awal terbentuk');
+  swaps = 0;
+  for (let i = 0; i < 25; i++) {
+    s.cutSegment(i * 0.7, 0, -2, i * 0.7 + 1, 20, -2, 2);   // swath baru tiap iterasi → grid selalu berubah
+    await new Promise((r) => setTimeout(r, 12));
+    s.updateMesh(scene);
+  }
+  ok(swaps >= 2, 'mesh kontinu: mesh ter-update saat cutting berjalan (bukan hanya di akhir) — swaps=' + swaps);
+}
+
 // ---------- H1: escapeHtml (cegah XSS nama fixture) ----------
 {
   const { escapeHtml } = await import('../src/util/html.js');
