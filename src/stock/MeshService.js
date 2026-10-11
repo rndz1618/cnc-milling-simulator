@@ -17,6 +17,7 @@ export function createMeshService({ WorkerCtor } = {}) {
 
   const pending = new Map();
   let nextId = 0;
+  let failed = false;
 
   if (worker) {
     worker.onmessage = (e) => {
@@ -28,10 +29,19 @@ export function createMeshService({ WorkerCtor } = {}) {
       else if (e.data.position == null) entry.resolve(null);
       else entry.resolve({ position: e.data.position, normal: e.data.normal, color: e.data.color });
     };
+
+    // Worker gagal load (module/CSP/network) atau crash di luar try/catch:
+    // tak akan ada balasan, jadi tolak semua pending agar pemanggil fallback sinkron.
+    worker.onerror = (ev) => {
+      failed = true;
+      const msg = (ev && (ev.message || ev.error?.message)) || 'mesh worker error';
+      for (const { reject } of pending.values()) reject(new Error(msg));
+      pending.clear();
+    };
   }
 
   function request(spec) {
-    if (!worker) return Promise.reject(new Error('mesh worker tidak tersedia'));
+    if (!worker || failed) return Promise.reject(new Error('mesh worker tidak tersedia'));
     const id = nextId++;
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });

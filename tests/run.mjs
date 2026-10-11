@@ -670,6 +670,16 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const none = createMeshService({ WorkerCtor: null });
   let threw2 = false; try { await none.request({ grid, nx: 2, ny: 2, nz: 2, originX: 0, originY: 0, originZ: 0, res: 1 }); } catch { threw2 = true; }
   ok(threw2, 'MeshService: tanpa Worker → reject (pemanggil fallback sinkron)');
+
+  // Worker gagal load/crash → pending request harus reject (bukan menggantung).
+  const svcErr = createMeshService({ WorkerCtor: FakeWorker });
+  const pErr = svcErr.request({ grid, nx: 2, ny: 2, nz: 2, originX: 0, originY: 0, originZ: 0, res: 1 });
+  FakeWorker.last.onerror({ message: 'load gagal' });
+  let threw3 = false; try { await pErr; } catch (e) { threw3 = e.message === 'load gagal'; }
+  ok(threw3, 'MeshService: worker onerror → reject pending');
+  let threw4 = false; try { await svcErr.request({ grid, nx: 2, ny: 2, nz: 2, originX: 0, originY: 0, originZ: 0, res: 1 }); } catch { threw4 = true; }
+  ok(threw4, 'MeshService: setelah onerror → request berikutnya reject');
+  svcErr.dispose();
 }
 
 // ---------- Laporan ----------
