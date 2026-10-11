@@ -2,6 +2,7 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
+> Daftar tunggal semua item tertunda (Tahap 6–8 + review): lihat `docs/BACKLOG.md`.
 commit: 4c76a00
 status: v0.13.0 — material removal v2: greedy mesher (`buildGreedyGeometry`) + Web Worker meshing (`MeshService`/`meshWorker`, latest-wins + fallback sinkron), `cutCylinder` optimasi; alarm HOLDER CRASH utk tabrakan holder/shank saat G00 (profil dari `machine.toolSpec`)
 verify: test 160/160 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + wizard touch-off + mesh worker aktif) · bench:mesh OK
