@@ -2,9 +2,9 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
-commit: 49cb4f6
+commit: 4c76a00
 status: v0.13.0 — material removal v2: greedy mesher (`buildGreedyGeometry`) + Web Worker meshing (`MeshService`/`meshWorker`, latest-wins + fallback sinkron), `cutCylinder` optimasi; alarm HOLDER CRASH utk tabrakan holder/shank saat G00 (profil dari `machine.toolSpec`)
-verify: test 158/158 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + wizard touch-off + mesh worker aktif) · bench:mesh OK
+verify: test 160/160 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + wizard touch-off + mesh worker aktif) · bench:mesh OK
 ## Sedang berjalan
 - (tidak ada)
 ## Berikutnya
@@ -17,6 +17,8 @@ verify: test 158/158 · build OK · smoke browser OK (shell JSON + FEED HOLD + R
 - **Greedy mesher** `src/stock/greedyMesh.js` (`buildGreedyGeometry` + `COLOR_RAW`/`COLOR_CUT`): quad-merge sisi permukaan seragam (stok penuh 100×80×20 → 12 tris). `VoxelStock` memakainya; fallback box bila grid kosong.
 - **Worker meshing — Approach 1**: worker (`src/stock/meshWorker.js` + `src/stock/MeshService.js`) HANYA membangun geometry; grid voxel + `cutCylinder` + collision tetap di main thread (alarm sinkron; unit test Node tetap jalan tanpa worker/DOM). `VoxelStock.updateMesh` async lewat `meshService` (token latest-wins; fallback sinkron). Worker ter-bundle Vite (`dist/assets/meshWorker-*.js`), probe round-trip `window.__meshWorkerActive=true`.
 - **Holder crash**: `src/machine/ToolProfile.js` (`toolProfile`/`radiusAt`/`sampleCollision`) + `Simulator._checkRapidCrash` → alarm `HOLDER CRASH` saat G00 nabrak holder/shank; profil dari `machine.toolSpec = {dia,flute,overall}`, fallback profil bawaan bila absen.
+- **Pasca-review (commit 4c76a00)**: (1) flute diprobe di **tip** (h=0) + mid-flute & disc shank/holder di **muka bawah** — sebelumnya disc di mid-flute membuat RAPID CRASH baru menyala ~18 mm tertanam & embed dangkal lolos (regresi vs `_checkRapidCrash` lama); (2) `scripts/verify.mjs` fail-closed bila port 4199 sudah melayani (cegah smoke hijau ke build basi) + kill process-group preview; `waitForFunction(fn, null, {timeout:90000})` (opsi di arg ke-3; env sandbox lambat).
+- **Ditunda (Tahap 8, dari review)**: flute hanya disampel di h=0 & fluteLen/2 → slate tipis murni di paruh atas flute bisa lolos (plane sampling, non-blok); bench pakai stok solid (best case); tak ada test latest-wins ordering.
 - **Bench** `npm run bench:mesh` (`scripts/bench-mesh.mjs`) mencetak ms greedy mesh 100×80×20 + tris (sanity gate >4000 ms → exit 1). Hasil rilis: ~399 ms, tris=12 (stok solid).
 - Wiring `main.js`/`FixtureManager` meneruskan `meshService`; `scripts/verify.mjs` menunggu `window.__meshWorkerActive` terdefinisi (gerbang jujur) + smoke Tahap 6/7 tetap.
-- Gate: `npm test` (158/158) · `npm run verify` hijau · `npm run bench:mesh` OK. Commit kecil per task; push ke `main` hanya setelah konfirmasi Jack.
+- Gate: `npm test` (160/160) · `npm run verify` hijau · `npm run bench:mesh` OK. Commit kecil per task; push ke `main` hanya setelah konfirmasi Jack.
