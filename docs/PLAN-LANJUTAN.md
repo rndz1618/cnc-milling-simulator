@@ -15,7 +15,7 @@ istilah teknis boleh English.
 | Simulator | ✅ Alarm menghentikan eksekusi (RESET untuk lanjut); soft limit halt; G00 nabrak material = RAPID CRASH (sampling radius); single block 1 blok/Cycle Start; M00/M01 hold; H offset belum diisi = alarm. |
 | Tool | ✅ Data-driven: dia/flute/overall dari tool table → geometri 3D. |
 | Stock/fixture | ✅ Ukuran + posisi manual (top-center/top-corner/custom), auto-fit sebagai saran, template vise visual, marker WCS per-fixture berlabel. |
-| Test | ✅ `npm test` — 121 unit test (golden file O20018 dari program nyata Jack). |
+| Test | ✅ `npm test` — 158 unit test (golden file O20018 dari program nyata Jack). |
 | Build | ✅ Vite dev/build/preview; deploy Vercel otomatis dari `main`. |
 
 **Invarian yang wajib dijaga:**
@@ -68,9 +68,14 @@ Tiga triad sumbu = **bukan bug**: (1) **ORIGIN MESIN** (oranye, di meja) titik n
 - Wizard **touch-off** (`src/machine/TouchOff.js`): pilih fixture + edge (x±/y±/z-top), readout jarak ke `edgePlane`, PROBE ke kontak, SET WCS menulis `machine.wcs[wcs][axis] = contactOffset(...)`.
 **Selesai jika:** skenario 2 ragum O20018 menampilkan 2 vise + 2 stok terpisah yang masing-masing terpotong blok G54/G55-nya. ✓ (golden test 2-ragum + smoke FIXTURE/wizard)
 
-### Tahap 8 — Material removal v2
-- Pindah cut + mesh ke **Web Worker**; evaluasi heightfield/dexel utk 3-axis (lebih ringan dari voxel); collision holder/shank (bukan hanya flute) = alarm.
-**Selesai jika:** program besar (≥2000 gerakan) tetap 60fps; G00 dengan holder menabrak stok tinggi memunculkan alarm HOLDER CRASH.
+### Tahap 8 — Material removal v2 — SELESAI (v0.13.0)
+- **Greedy mesher** (`src/stock/greedyMesh.js`, `buildGreedyGeometry`): quad-merge permukaan voxel seragam → jumlah triangle turun drastis (stok penuh 100×80×20 = 12 tris, hanya sisi terluar). Dipakai `VoxelStock` (fallback box bila grid kosong).
+- **Web Worker meshing — Approach 1**: worker (`src/stock/meshWorker.js` + `MeshService.js`) HANYA membangun geometry mesh; grid voxel, `cutCylinder`, dan collision **tetap di main thread** — agar alarm sinkron & unit test Node (tanpa worker/DOM) tetap jalan. `VoxelStock.updateMesh` memakai `meshService` (latest-wins token; fallback sinkron bila worker tak ada). Worker ter-bundle Vite (`dist/assets/meshWorker-*.js`), probe round-trip `window.__meshWorkerActive=true`.
+- **HOLDER CRASH** (`src/machine/ToolProfile.js` + `Simulator._checkRapidCrash`): saat G00, tabrakan holder/shank (bukan hanya flute) → alarm `HOLDER CRASH`; profil (dia/flute/overall) dari `machine.toolSpec`, fallback profil bawaan bila absen.
+- **Bench** `npm run bench:mesh` mengukur waktu greedy mesh stok 100×80×20 (ms + tris).
+- **Catatan kejujuran (60fps):** kriteria "program ≥2000 gerakan tetap 60fps" **belum diukur langsung**. Task 8 hanya mengukur waktu greedy mesher, bukan FPS playback. Mitigasi yang sudah ada: offload meshing ke worker + reduksi triangle greedy; pengukuran FPS program penuh = tindak lanjut bila terbukti perlu.
+- **Heightfield/dexel DITUNDA** (spec §YAGNI): representasi alternatif 3-axis hanya digarap jika pengukuran membuktikan worker+greedy kurang. Belum dikerjakan.
+**Selesai jika:** program besar (≥2000 gerakan) tetap 60fps; G00 dengan holder menabrak stok tinggi memunculkan alarm HOLDER CRASH. ✓ alarm HOLDER CRASH (unit test); FPS 60 program penuh = belum terukur (lihat catatan di atas).
 
 ### Tahap 9 — Fondasi SaaS
 - Akun + multi-tenant; machine profile per institusi (travel, rpm, ATC, controller); pustaka program; **scenario builder + penilaian** (checklist otomatis, kesalahan tercatat: crash/offset salah/waktu); ekspor laporan.
@@ -80,7 +85,7 @@ Tiga triad sumbu = **bukan bug**: (1) **ORIGIN MESIN** (oranye, di meja) titik n
 
 ## 5. Catatan handoff untuk AI harness lain
 
-**Aman dilanjutkan AI lain** karena: kode modular dengan batas tugas jelas, 121 unit test sebagai jaring pengaman regresi, invarian tertulis (bagian 1), dan program uji nyata (O20018) tersedia.
+**Aman dilanjutkan AI lain** karena: kode modular dengan batas tugas jelas, 158 unit test sebagai jaring pengaman regresi, invarian tertulis (bagian 1), dan program uji nyata (O20018) tersedia.
 
 **Urutan baca wajib:** `README.md` → dokumen ini → header `src/machine/Parser.js` (format entri) → `src/machine/MachineState.js` (model koordinat) → `src/sim/Simulator.js`.
 

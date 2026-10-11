@@ -1,4 +1,4 @@
-# CNC Milling Simulator v0.12.0 — Training
+# CNC Milling Simulator v0.13.0 — Training
 
 Modular web CNC milling trainer with voxel material removal and Haas-style control panel.
 
@@ -6,6 +6,7 @@ Modular web CNC milling trainer with voxel material removal and Haas-style contr
 
 | Rev | Version | Notes |
 |-----|---------|-------|
+| — | 0.13.0 | Material removal v2: greedy mesher (`buildGreedyGeometry`) + Web Worker meshing (`MeshService`/`meshWorker`, latest-wins + fallback sinkron), `VoxelStock.cutCylinder` optimasi; collision holder/shank saat G00 → alarm HOLDER CRASH (profil dari `machine.toolSpec`) |
 | — | 0.12.0 | Fixture editor: multi-fixture per WCS (G54–G59, maks 6), parameter vise (lebar/tinggi rahang, bukaan, base), preset material stok, skenario bernama (layout + program + WCS + tool) di localStorage, wizard touch-off edge-finder kontak → WCS |
 | — | 0.11.0 | Interpreter realism: cutter comp G41/G42 (pass `Compensator`, lead-in/out miter), arc G18/G19, G4 dwell waktu nyata, G84 rigid tapping (balik spindle), feed hold mid-blok, ramp spindle + animasi ATC |
 | — | 0.10.0 | UI shell data-driven: tab mode (EDIT/MEM/MDI/JOG/SETUP), softkey & DRO dirender dari controller profile JSON; action registry (config vs code) |
@@ -24,7 +25,8 @@ npm install
 npm run dev      # dev server (Vite)
 npm run build    # production build → dist/
 npm run preview  # serve the production build
-npm test         # unit test 121 kasus (golden file: O20018)
+npm test         # unit test 158 kasus (golden file: O20018)
+npm run bench:mesh  # bench greedy mesher (ms + triangle)
 ```
 
 Rencana pengembangan berikutnya: lihat [docs/PLAN-LANJUTAN.md](docs/PLAN-LANJUTAN.md).

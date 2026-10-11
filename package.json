@@ -1,6 +1,6 @@
 {
   "name": "cnc-milling-simulator",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node tests/run.mjs",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "bench:mesh": "node scripts/bench-mesh.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

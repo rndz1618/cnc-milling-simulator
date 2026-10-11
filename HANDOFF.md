@@ -2,21 +2,21 @@
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
-commit: d5ec437
-status: v0.12.0 — fixture editor: multi-fixture per WCS (maks 6), vise ber-parameter, preset material, skenario bernama (localStorage), wizard touch-off edge-finder → WCS
-verify: test 121/121 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + wizard touch-off)
+commit: 49cb4f6
+status: v0.13.0 — material removal v2: greedy mesher (`buildGreedyGeometry`) + Web Worker meshing (`MeshService`/`meshWorker`, latest-wins + fallback sinkron), `cutCylinder` optimasi; alarm HOLDER CRASH utk tabrakan holder/shank saat G00 (profil dari `machine.toolSpec`)
+verify: test 158/158 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + wizard touch-off + mesh worker aktif) · bench:mesh OK
 ## Sedang berjalan
 - (tidak ada)
 ## Berikutnya
-1. **Tahap 8** (material removal v2): pindah cut + mesh ke Web Worker; heightfield/dexel utk 3-axis; collision holder/shank → alarm HOLDER CRASH.
-2. Setelah itu: Tahap 9 (fondasi SaaS: multi-tenant, scenario builder + penilaian) → 10 (PWA/i18n).
-- Ditunda dari Tahap 6: **G92** (work coordinate shift) — di luar scope v0.11.0 (spec §4).
-- Kandidat v0.12.1 (minor Tahap 6): `G4 X` di G20 pakai X ter-konversi unit; spasi-pause tak set `holdReason`; akuntansi `elapsed` ATC; miter tak di-clamp; G28 stale pos di Compensator.
-## Catatan gelombang terakhir (2026-10-11)
-- Engine multi-stok: `src/machine/Fixtures.js` (model fixture + `MATERIALS` + `stockOriginFor` + `normalizeFixtures` + `serializeScenario`/`parseScenario`) & `src/sim/FixtureManager.js` (`Map<wcs,VoxelStock>` + vise ber-parameter + `frameBounds`/`remainingRatio`). `Simulator` punya `resolveStock(wcs)`/`onResetStocks` → tiap WCS memotong stok sendiri (bukan voxel gabungan).
-- UI: sub-tab STOCK → **FIXTURE** (`index.html` `#setupFixture`, `#fixtureList` baris per fixture). Skenario disimpan di `localStorage` `cnc-sim-scenarios` (layout + program + WCS + tool). `main.js`: `fixtureState` (array fixture) + `rebuildFixtures` + `applyFixtureLayout`; `applyStockSetup` kini memperbarui fixture G54 (jalur auto-fit/legacy).
-- Wizard touch-off: `src/machine/TouchOff.js` (`EDGES`, `edgePlane`, `contactOffset`, `checkContact`, `surfaceCoord`) dipakai overlay `#touchoffOverlay` (PROBE ke kontak → SET WCS menulis `machine.wcs[wcs][axis]`).
-- Golden test 2-ragum O20018 (dua fixture G54/G55, dua stok terpotong independen) + smoke browser FIXTURE/scenario & wizard.
-- **Pasca-review (commit berikutnya)**: (1) load skenario kini menang atas auto-fit (fixtureState di-set setelah `loadProgram`); (2) touch-off memanggil `computeMachineMoves`/`rebuildPreview` (invarian 2); (3) ketik parameter fixture tidak lagi kehilangan fokus (render hanya untuk select); (4) `FixtureManager.dispose` membuang geometry/material stok & vise; (5) buang kode mati kontrol stok lama. Smoke +`scenario load` + assert layout 2-ragum dipulihkan.
-- Known issues (kandidat v0.12.1, dari review): posisi stok diturunkan dari WCS saat build → edit WCS/touch-off tak rebuild mesh (mesh vs toolpath bisa divergen); touch-off X/Y hanya tepat untuk `top-corner` (default `top-center` butuh koreksi setengah ukuran); `custom` placement tanpa input offset (stok lompat ke origin mesin); `normalizeFixtures` diam-diam buang WCS duplikat; nama fixture di-innerHTML tanpa escape.
-- Gate: `npm test` (121/121) + `npm run verify`. Commit kecil per task; push ke `main` hanya setelah konfirmasi Jack.
+1. **Tahap 9** (fondasi SaaS): akun + multi-tenant, machine profile per institusi, pustaka program, scenario builder + penilaian otomatis (checklist, kesalahan tercatat: crash/offset salah/waktu), ekspor laporan.
+2. Setelah itu: Tahap 10 (opsional) — PWA offline, layout tablet, i18n ID/EN.
+- Ditunda (kandidat v0.12.1, dari Tahap 6): `G4 X` di G20 pakai X ter-konversi unit; spasi-pause tak set `holdReason`; akuntansi `elapsed` ATC; miter tak di-clamp; G28 stale pos di Compensator. Plus **G92** (work coordinate shift) di luar scope v0.11.0 (spec Tahap 6 §4).
+- Ditunda (kandidat v0.12.1, dari Tahap 7): posisi stok diturunkan dari WCS saat build → edit WCS/touch-off tak rebuild mesh (mesh vs toolpath bisa divergen); touch-off X/Y hanya tepat untuk `top-corner` (default `top-center` butuh koreksi setengah ukuran); `custom` placement tanpa input offset (stok lompat ke origin mesin); `normalizeFixtures` diam-diam buang WCS duplikat; nama fixture di-innerHTML tanpa escape.
+- Ditunda (Tahap 8, YAGNI): **heightfield/dexel** utk 3-axis — hanya jika pengukuran membuktikan worker+greedy kurang. **FPS program ≥2000 gerakan tetap 60fps BELUM terukur** (bench Task 8 mengukur waktu greedy mesh, bukan FPS); pengukuran FPS penuh = tindak lanjut bila perlu.
+## Catatan gelombang terakhir (2026-10-11) — Tahap 8 material removal v2
+- **Greedy mesher** `src/stock/greedyMesh.js` (`buildGreedyGeometry` + `COLOR_RAW`/`COLOR_CUT`): quad-merge sisi permukaan seragam (stok penuh 100×80×20 → 12 tris). `VoxelStock` memakainya; fallback box bila grid kosong.
+- **Worker meshing — Approach 1**: worker (`src/stock/meshWorker.js` + `src/stock/MeshService.js`) HANYA membangun geometry; grid voxel + `cutCylinder` + collision tetap di main thread (alarm sinkron; unit test Node tetap jalan tanpa worker/DOM). `VoxelStock.updateMesh` async lewat `meshService` (token latest-wins; fallback sinkron). Worker ter-bundle Vite (`dist/assets/meshWorker-*.js`), probe round-trip `window.__meshWorkerActive=true`.
+- **Holder crash**: `src/machine/ToolProfile.js` (`toolProfile`/`radiusAt`/`sampleCollision`) + `Simulator._checkRapidCrash` → alarm `HOLDER CRASH` saat G00 nabrak holder/shank; profil dari `machine.toolSpec = {dia,flute,overall}`, fallback profil bawaan bila absen.
+- **Bench** `npm run bench:mesh` (`scripts/bench-mesh.mjs`) mencetak ms greedy mesh 100×80×20 + tris (sanity gate >4000 ms → exit 1). Hasil rilis: ~399 ms, tris=12 (stok solid).
+- Wiring `main.js`/`FixtureManager` meneruskan `meshService`; `scripts/verify.mjs` menunggu `window.__meshWorkerActive` terdefinisi (gerbang jujur) + smoke Tahap 6/7 tetap.
+- Gate: `npm test` (158/158) · `npm run verify` hijau · `npm run bench:mesh` OK. Commit kecil per task; push ke `main` hanya setelah konfirmasi Jack.
