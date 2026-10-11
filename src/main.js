@@ -7,6 +7,7 @@ import {
   makeFixture, normalizeFixtures, serializeScenario, parseScenario, MATERIALS
 } from './machine/Fixtures.js';
 import { edgePlane, contactOffset, checkContact, surfaceCoord } from './machine/TouchOff.js';
+import { escapeHtml } from './util/html.js';
 import { FixtureManager } from './sim/FixtureManager.js';
 import { createMeshService } from './stock/MeshService.js';
 import {
@@ -458,7 +459,7 @@ function fixtureRowHtml(f, idx) {
     .map((p) => opt(p, p === 'custom' ? 'Manual' : p, f.placement)).join('');
   return '' +
     '<div class="fx-row" data-idx="' + idx + '">' +
-    '<div class="fx-head"><b>' + f.name + '</b>' +
+    '<div class="fx-head"><b>' + escapeHtml(f.name) + '</b>' +
     '<select data-field="wcs">' + wcsOpts + '</select></div>' +
     '<div class="stock-grid">' +
     '<label>X <input type="number" data-field="stockX" value="' + f.stock.sizeX + '" /></label>' +
@@ -1257,7 +1258,7 @@ function openTouchOff() {
   const sel = $('toFixture');
   if (sel) {
     sel.innerHTML = '<option value="">— pilih —</option>' +
-      fixtureState.map((f) => '<option value="' + f.wcs + '">' + f.wcs + ' — ' + f.name + '</option>').join('');
+      fixtureState.map((f) => '<option value="' + f.wcs + '">' + escapeHtml(f.wcs + ' — ' + f.name) + '</option>').join('');
     const pref = (machine.activeWcs && fixtureState.some((f) => f.wcs === machine.activeWcs)) ? machine.activeWcs : (fixtureState[0] && fixtureState[0].wcs);
     sel.value = pref || '';
   }

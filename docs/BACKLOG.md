@@ -5,15 +5,13 @@ yang di-park, plus tahap berikutnya. Bahasa kerja: Bahasa Indonesia, istilah tek
 
 > Sumber: rekap review Tahap 6/7 (HANDOFF), ledger SDD Tahap 8
 > (`.superpowers/sdd/2026-10-11-tahap8-removal-v2/progress.md`), dan review pasca-merge v0.13.0.
-> Status: per rilis **v0.13.0** (commit `2267beb`). Tidak ada item di sini yang memblok rilis.
+> Status: per rilis **v0.13.1** (commit `2267beb`+fix H1/H3). Tidak ada item di sini yang memblok rilis.
 
 ## Prioritas HIGH (bug/security/dampak nyata)
 
 | # | Sumber | Item |
 |---|--------|------|
-| H1 | T7 | **Nama fixture di-innerHTML tanpa escape** → potensi XSS. Escape nama sebelum render. |
 | H2 | T7 | **Edit WCS/touch-off tak rebuild mesh** — posisi stok diturunkan dari WCS saat `build`, jadi mesh vs toolpath bisa divergen. Rebuild saat WCS berubah. |
-| H3 | T6 | **`G4 X` di G20** memakai X ter-konversi unit (bug). Pakai nilai X mentah (detik). |
 | H4 | T9 | **Tahap 9 — fondasi SaaS**: akun + multi-tenant, machine profile per institusi, pustaka program, scenario builder + penilaian otomatis, ekspor laporan. |
 
 ## Prioritas MEDIUM (korektnes/kualitas)
@@ -28,7 +26,7 @@ yang di-park, plus tahap berikutnya. Bahasa kerja: Bahasa Indonesia, istilah tek
 | M6 | T7 | **`normalizeFixtures` diam-diam buang WCS duplikat.** |
 | M7 | T8 | **Test latest-wins ordering `VoxelStock`** (reply token basi tiba setelah token baru) — satu-satunya cabang async non-trivial tanpa cakupan. |
 | M8 | T8 | **`_geoFrom` hanya jaga `g.position`** — reply dengan position tapi normal/color hilang → geometry rusak senyap. |
-| M9 | T8 | **`package-lock.json` versi 0.9.3** tak sinkron `package.json` 0.13.0 — putuskan commit/regenerate. |
+| M9 | T8 | **`package-lock.json` versi 0.9.3** tak sinkron `package.json` 0.13.1 — putuskan commit/regenerate. |
 | M10 | T8 | **Ukur FPS program ≥2000 gerakan** (kriteria "selesai" Tahap 8 belum terukur; bench baru mengukur waktu mesh). |
 | M11 | T8 | **verify**: probe port dijalankan setelah build (boros) + `kill -pid` no-op di Windows. |
 

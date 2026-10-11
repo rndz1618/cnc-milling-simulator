@@ -183,6 +183,7 @@ function blocksToMoves(blocks) {
     const gCodes = [];
     const mCodes = [];
     let nx = null, ny = null, nz = null, nf = null, ns = null, nt = null;
+    let nxRaw = null; // X mentah (tanpa skala unit) — dipakai G4 (waktu, detik)
     let ni = null, nj = null, nk = null, nr = null, nq = null, np = null, nh = null, nl = null, nd = null;
     let sawG28 = false, sawG53 = false, sawCycleWord = false, group1 = false;
 
@@ -194,7 +195,7 @@ function blocksToMoves(blocks) {
       switch (letter) {
         case 'G': gCodes.push(val === null ? 0 : val); break;
         case 'M': mCodes.push(val === null ? 0 : val); break;
-        case 'X': nx = val === null ? 0 : val * scale(); break;
+        case 'X': nxRaw = val === null ? 0 : val; nx = val === null ? 0 : val * scale(); break;
         case 'Y': ny = val === null ? 0 : val * scale(); break;
         case 'Z': nz = val === null ? 0 : val * scale(); break;
         case 'F': nf = val === null ? 0 : val * scale(); break;
@@ -224,7 +225,7 @@ function blocksToMoves(blocks) {
       if (g === 0 || g === 1 || g === 2 || g === 3) {
         motion = g; group1 = true; cycle = null;
       } else if (g === 4) {
-        const p = np != null ? np : (nx != null ? nx : 0);
+        const p = np != null ? np : (nxRaw != null ? nxRaw : 0);
         moves.push({ type: 'dwell', p, line: blk.lineNum, raw: blk.raw.trim() });
       } else if (g === 17 || g === 18 || g === 19) {
         if (g !== 17 && compSide !== null) {

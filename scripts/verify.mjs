@@ -142,8 +142,8 @@ try {
   await page.waitForTimeout(800);
 
   // Tahap 7: FIXTURE editor — sub-tab, add row, simpan/muat skenario (tanpa pageerror).
-  const fx = await page.evaluate(() => {
-    const out = { fixtureTab: false, fixtureVisible: false, rowsBefore: 0, rowsAfter: 0, saved: false, fxCount: 0, progLen: 0, msg: '', loadMsg: '', rowsAfterLoad: 0 };
+  const fx = await page.evaluate(async () => {
+    const out = { fixtureTab: false, fixtureVisible: false, rowsBefore: 0, rowsAfter: 0, saved: false, fxCount: 0, progLen: 0, msg: '', loadMsg: '', rowsAfterLoad: 0, xssLeaked: null, xssText: '' };
     const m = document.querySelector('#modeTabs .mode-tab[data-mode="setup"]');
     if (m) m.click();
     const tab = document.querySelector('#setupSubs [data-sub="fixture"]');
@@ -168,6 +168,16 @@ try {
     document.querySelector('#scenarioLoad')?.click();
     out.loadMsg = document.querySelector('#sbMsg')?.textContent || '';
     out.rowsAfterLoad = document.querySelectorAll('#fixtureList .fx-row').length;
+    // H1: nama fixture berbahaya dari skenario TIDAK boleh dieksekusi (XSS).
+    const payload = '<img src=x onerror="window.__xss=1">';
+    const map2 = JSON.parse(localStorage.getItem('cnc-sim-scenarios') || '{}');
+    map2.smoke_xss = JSON.stringify({ fixtures: [{ wcs: 'G54', name: payload }], program: '', wcs: {}, tools: {} });
+    localStorage.setItem('cnc-sim-scenarios', JSON.stringify(map2));
+    if (nameEl) nameEl.value = 'smoke_xss';
+    document.querySelector('#scenarioLoad')?.click();
+    await new Promise((r) => setTimeout(r, 100));
+    out.xssLeaked = window.__xss === undefined ? false : true;
+    out.xssText = (document.querySelector('#fixtureList .fx-row b')?.textContent) || '';
     localStorage.removeItem('cnc-sim-scenarios');
     return out;
   });
@@ -253,6 +263,8 @@ try {
   if (!(fx.progLen > 0)) problems.push('skenario 2-ragum tidak menyimpan program (progLen=' + fx.progLen + ')');
   if (!/Skenario dimuat/.test(fx.loadMsg || '')) problems.push('skenario tidak bisa dimuat (loadMsg=' + fx.loadMsg + ')');
   if (fx.rowsAfterLoad !== 2) problems.push('layout 2-ragum tidak dipulihkan saat load (rows=' + fx.rowsAfterLoad + ')');
+  if (fx.xssLeaked) problems.push('XSS nama fixture tereksekusi (window.__xss ter-set)');
+  if (fx.xssText !== '<img src=x onerror="window.__xss=1">') problems.push('nama fixture berbahaya tidak di-escape (text=' + fx.xssText + ')');
   if (!to.overlay) problems.push('wizard touch-off tidak terbuka (overlay=' + to.overlay + ')');
   if (to.disabledBefore !== true) problems.push('#toStart harus disabled sebelum kontak (disabledBefore=' + to.disabledBefore + ')');
   if (to.disabledAfter !== false) problems.push('#toStart harus enabled saat kontak (disabledAfter=' + to.disabledAfter + ')');

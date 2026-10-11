@@ -335,6 +335,12 @@ eq(dw.moves.find((m) => m.type === 'dwell')?.p, 1.5, 'G4 P1.5 → dwell p=1.5');
 const dw0 = parseGCode('G4\nG0 X5\nM30');
 eq(dw0.moves.find((m) => m.type === 'dwell')?.p, 0, 'G4 tanpa P → dwell p=0');
 
+// H3: G4 X = waktu (detik), JANGAN dikonversi unit meski mode G20 (inch).
+const dwIn = parseGCode('G20\nG4 X0.5\nM30');
+eq(dwIn.moves.find((m) => m.type === 'dwell')?.p, 0.5, 'H3: G4 X0.5 di G20 → dwell 0.5s (bukan 12.7)');
+const dwInP = parseGCode('G20\nG4 P0.5\nM30');
+eq(dwInP.moves.find((m) => m.type === 'dwell')?.p, 0.5, 'H3: G4 P0.5 di G20 → dwell 0.5s');
+
 // ---------- Tahap 6: G84 tapping ----------
 const tap = parseGCode('G0 X0 Y0 Z0\nG84 X5 Y5 Z-10 R2 F100\nM30');
 const tapMoves = tap.moves.filter((m) => m.type === 'feed');
@@ -713,6 +719,15 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   s2.updateMesh(scene, true);
   await new Promise((r) => setTimeout(r, 0));
   ok(!!s2.mesh && !!s2.mesh.geometry, 'VoxelStock async: service gagal → fallback sinkron');
+}
+
+// ---------- H1: escapeHtml (cegah XSS nama fixture) ----------
+{
+  const { escapeHtml } = await import('../src/util/html.js');
+  eq(escapeHtml('<b>&"\''), '&lt;b&gt;&amp;&quot;&#39;', 'escapeHtml: escape & < > " \'');
+  eq(escapeHtml('Ragum 1'), 'Ragum 1', 'escapeHtml: teks aman tak berubah');
+  eq(escapeHtml('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;',
+    'escapeHtml: tag berbahaya dinetralkan');
 }
 
 // ---------- Laporan ----------
