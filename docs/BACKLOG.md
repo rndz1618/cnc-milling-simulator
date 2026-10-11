@@ -5,7 +5,7 @@ yang di-park, plus tahap berikutnya. Bahasa kerja: Bahasa Indonesia, istilah tek
 
 > Sumber: rekap review Tahap 6/7 (HANDOFF), ledger SDD Tahap 8
 > (`.superpowers/sdd/2026-10-11-tahap8-removal-v2/progress.md`), dan review pasca-merge v0.13.0.
-> Status: per rilis **v0.13.1** (commit `2267beb`+fix H1/H3). Tidak ada item di sini yang memblok rilis.
+> Status: per rilis **v0.13.2** (fix H1/H3 + mesh ter-update saat cutting). Tidak ada item di sini yang memblok rilis.
 
 ## Prioritas HIGH (bug/security/dampak nyata)
 
@@ -24,9 +24,9 @@ yang di-park, plus tahap berikutnya. Bahasa kerja: Bahasa Indonesia, istilah tek
 | M4 | T7 | **Touch-off X/Y hanya tepat untuk `top-corner`** (default `top-center` butuh koreksi setengah ukuran). |
 | M5 | T7 | **`custom` placement tanpa input offset** → stok lompat ke origin mesin. |
 | M6 | T7 | **`normalizeFixtures` diam-diam buang WCS duplikat.** |
-| M7 | T8 | **Test latest-wins ordering `VoxelStock`** (reply token basi tiba setelah token baru) — satu-satunya cabang async non-trivial tanpa cakupan. |
+| M7 | T8 | **Cancellation reply in-flight saat `dispose`/resize** — jalur "satu in-flight" sudah diuji (test cutting kontinu v0.13.2); residu: balasan worker yang datang setelah `_meshToken++` (dispose/resize) belum ada test. |
 | M8 | T8 | **`_geoFrom` hanya jaga `g.position`** — reply dengan position tapi normal/color hilang → geometry rusak senyap. |
-| M9 | T8 | **`package-lock.json` versi 0.9.3** tak sinkron `package.json` 0.13.1 — putuskan commit/regenerate. |
+| M9 | T8 | **`package-lock.json` versi 0.9.3** tak sinkron `package.json` 0.13.2 — putuskan commit/regenerate. |
 | M10 | T8 | **Ukur FPS program ≥2000 gerakan** (kriteria "selesai" Tahap 8 belum terukur; bench baru mengukur waktu mesh). |
 | M11 | T8 | **verify**: probe port dijalankan setelah build (boros) + `kill -pid` no-op di Windows. |
 
@@ -48,6 +48,7 @@ yang di-park, plus tahap berikutnya. Bahasa kerja: Bahasa Indonesia, istilah tek
 | L12 | T8 | Flute hanya disampel h=0 & `fluteLen/2` → slab tipis murni di paruh atas flute bisa lolos (plane sampling). |
 | L13 | T8 | **heightfield/dexel** (YAGNI — hanya bila pengukuran membuktikan worker+greedy kurang). |
 | L14 | T10 | **Tahap 10 (opsional)** — PWA offline, layout tablet, i18n ID/EN. |
+| L15 | T8 | **Smoke tak meng-assert material BENAR terpotong** — real-time di sandbox terlalu lambat (ratio tetap ~100%), jadi regresi "tak terpotong" lolos smoke; butuh skenario driving deterministik (bukan menambah `waitFor`). |
 
 ## Konvensi mengerjakan
 - Satu item (atau beberapa yang serumpun) per gelombang kecil; commit kecil, pesan jelas.

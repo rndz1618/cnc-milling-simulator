@@ -3,9 +3,9 @@
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
 > Daftar tunggal semua item tertunda (Tahap 6–8 + review): lihat `docs/BACKLOG.md`.
-commit: aba7289
-status: v0.13.1 — bugfix: (H1) escape nama fixture saat render (`escapeHtml`, `src/util/html.js`) cegah XSS dari skenario; (H3) `G4 X` = detik (nilai mentah, tak terkonversi unit di G20). Di atas v0.13.0 (material removal v2).
-verify: test 165/165 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + smoke XSS nama fixture + wizard touch-off + mesh worker aktif) · bench:mesh OK
+commit: 488ee7d
+status: v0.13.2 — bugfix: (1) material kini ter-update **saat** cutting berjalan (bukan hanya di akhir) — `VoxelStock.updateMesh` dibatasi satu permintaan meshing in-flight; (2) H1 escape nama fixture (`escapeHtml`); (3) H3 `G4 X` = detik. Di atas v0.13.0 (material removal v2).
+verify: test 167/167 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + smoke XSS nama fixture + wizard touch-off + mesh worker aktif) · bench:mesh OK
 ## Sedang berjalan
 - (tidak ada)
 ## Berikutnya
@@ -18,6 +18,12 @@ verify: test 165/165 · build OK · smoke browser OK (shell JSON + FEED HOLD + R
 - **H1 — XSS nama fixture**: helper baru `src/util/html.js` (`escapeHtml`: escape `& < > " '`). Dipakai di `main.js` pada render daftar fixture (`fixtureRowHtml`) dan opsi selector WCS. Unit test (`tests/run.mjs`) + assertion smoke end-to-end (`verify.mjs`: skenario jahat `<img src=x onerror=...>` di-load → `window.__xss` tak ter-set + `textContent` utuh). Diverifikasi RED dulu (tanpa escape) lalu GREEN.
 - **H3 — `G4 X` di G20**: `Parser.js` menyimpan `nxRaw` (nilai X sebelum `scale()`); dwell pakai `nxRaw`, bukan `nx` ter-konversi. `G4 P` memang sudah tak ter-skala. Unit test: `G20\nG4 X0.5` → `p=0.5` (bukan 12.7).
 - Gate: `npm test` 165/165 · `npm run verify` hijau (build + smoke, termasuk smoke XSS). Item H1/H3 dihapus dari `docs/BACKLOG.md`.
+
+## Catatan gelombang (2026-10-11) — v0.13.2 bugfix mesh saat cutting
+- **Gejala Jack (deployed)**: material "terpotong tapi sangat lambat/akhir". **Akar**: `VoxelStock.updateMesh` token latest-wins membuang balasan worker bila ada permintaan lebih baru yang **dikirim**. Worker greedy-mesh (~335 ms) >> `rebuildIntervalMs` (80 ms) → saat cutting kontinu SEMUA balasan basi → mesh hanya ter-update ketika cutting berhenti; permintaan menumpuk tiap 80 ms (page lambat).
+- **Fix**: batasi **satu permintaan meshing in-flight**; balasan hanya dibuang bila dibatalkan (`dispose`/resize menaikkan `_meshToken`). Cut selama in-flight tidak me-reset `_dirty` (agar cut terakhir tetap diproses).
+- **Bukti**: probe 25 cut kontinu/12 ms + service 40 ms → sebelum: 21 permintaan, **0** swap mesh; sesudah: 6 swap. Test regresi di `tests/run.mjs` (RED→GREEN). Gate: `npm test` 167/167 · `npm run verify` hijau.
+- **Cakupan sisa**: smoke real-time sandbox terlalu lambat untuk meng-assert material terpotong → item baru L15 di `docs/BACKLOG.md`.
 
 ## Catatan gelombang (2026-10-11) — Tahap 8 material removal v2
 - **Greedy mesher** `src/stock/greedyMesh.js` (`buildGreedyGeometry` + `COLOR_RAW`/`COLOR_CUT`): quad-merge sisi permukaan seragam (stok penuh 100×80×20 → 12 tris). `VoxelStock` memakainya; fallback box bila grid kosong.
