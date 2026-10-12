@@ -628,10 +628,10 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const s = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8 });
   ok(s.cw === 3 && s.chN === 3, 'chunk: 20 voxel / 8 → 3x3 chunk');
   s._dirtyChunks.clear(); for (const c of s.chunks) c.dirty = false;
-  s.cutSegment(7, 0, -2, 7, 0, -2, 2);   // tepi x=8 (chunk 0/1)
+  s.cutSegment(6.5, 0, -2, 6.5, 0, -2, 1.5);   // voxel terhapus ix 5..7 (semua chunk 0), tepi chunk di ix=8
   const ids = [...s._dirtyChunks].sort((a, b) => a - b);
-  ok(ids.includes(s._chunkId(0, 0)) && ids.includes(s._chunkId(1, 0)),
-    'chunk: cut di batas menandai KEDUA chunk (0,0) & (1,0), dapat ' + ids.join(','));
+  eq(ids, [s._chunkId(0, 0), s._chunkId(1, 0)].sort((a, b) => a - b),
+    'chunk: cut di tepi menandai tepat (0,0)+(1,0) via ekspansi +1 (tanpa over-mark), dapat ' + ids.join(','));
 }
 
 // ---------- Tahap 8: VoxelStock greedy ----------
