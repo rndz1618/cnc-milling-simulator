@@ -648,9 +648,21 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(s.cutSegment(0, 0, 0, 10, 0, 0, 3), 'VoxelStock: cut mengubah grid');
   const geo2 = s.buildGeometry();
   const col = geo2.attributes.color.array;
-  const cutR = 0.55;
+  const cutR = 0.96 * 0.45;
   ok(Array.from(col).some((c, i) => i % 3 === 0 && Math.abs(c - cutR) < 1e-6),
     'VoxelStock: setelah potong ada warna machined (cut)');
+}
+
+// ---------- warna cut kontras per material (Task realtime cutting) ----------
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const dark = [0.54, 0.56, 0.59];   // steel raw ~ abu, dulu nyaris sama dgn cut default
+  const s = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0, colorRaw: dark });
+  s.cutSegment(0, 0, 0, 10, 0, 0, 3);
+  const col = s.buildGeometry().attributes.color.array;
+  const cutExpected = dark[0] * 0.45;
+  ok(Array.from(col).some((c, i) => i % 3 === 0 && Math.abs(c - cutExpected) < 1e-4),
+    'warna cut: muka cut = colorRaw*0.45 (kontras vs steel raw), cari ' + cutExpected);
 }
 
 // ---------- Tahap 8: holder crash ----------

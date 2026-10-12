@@ -17,6 +17,7 @@ export class VoxelStock {
     originY = 0,
     originZ = -20,
     colorRaw = null,
+    colorCut = null,
     meshService = null,
     chunkVoxels = 8
   } = {}) {
@@ -28,6 +29,7 @@ export class VoxelStock {
     this.originY = originY;
     this.originZ = originZ;
     this.colorRaw = colorRaw || COLOR_RAW;
+    this.colorCut = colorCut || this.colorRaw.map((c) => c * 0.45);
     this.chunkVoxels = chunkVoxels;
     this.maxChunksPerUpdate = 4;
 
@@ -232,7 +234,8 @@ export class VoxelStock {
       originY: this.originY,
       originZ: this.originZ,
       res: this.res,
-      colorRaw: this.colorRaw
+      colorRaw: this.colorRaw,
+      colorCut: this.colorCut
     });
 
     if (!g) {
@@ -272,6 +275,7 @@ export class VoxelStock {
       originZ: this.originZ,
       res: this.res,
       colorRaw: this.colorRaw,
+      colorCut: this.colorCut,
       emitBounds: { minX: 1, maxX: 1 + chunkW, minY: 1, maxY: 1 + chunkH, minZ: 0, maxZ: this.nz }
     };
   }
