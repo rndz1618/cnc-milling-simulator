@@ -156,12 +156,13 @@ Ganti blok `Tahap 8: VoxelStock async mesh` + blok regresi kontinu dengan:
   ok(meshes.length === s.cw * s.chN, 'chunk sync: semua chunk punya mesh (' + meshes.length + '/' + (s.cw * s.chN) + ')');
   ok(meshes.every((m) => m.name === 'stock-chunk'), 'chunk sync: nama mesh = stock-chunk');
 
-  // tanam muka internal: dua chunk bertetangga harus sama dgn grid tunggal
-  // (jumlah muka stok penuh 20x20x10 dgn chunk 8 == jumlah muka grid tunggal penuh)
-  const single = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10 });
-  const triChunked = meshes.reduce((a, m) => a + m.geometry.attributes.position.count / 3, 0);
-  const triSingle = single.buildGeometry().attributes.position.count / 3;
-  ok(triChunked === triSingle, 'chunk sync: tanpa muka internal (chunked ' + triChunked + ' == single ' + triSingle + ')');
+  // Tanpa muka internal: stok SOLID yg di-mesh per-chunk menghasilkan tepat
+  // jumlah muka permukaan luar ter-subdivisi chunk (greedy tak melintasi batas
+  // chunk). cz=1 (nz penuh). quads = 2*(cy*cz + cx*cz + cx*cy).
+  const expectedQuads = 2 * (s.chN * 1 + s.cw * 1 + s.cw * s.chN);   // 20x20x10 chunk 8 -> 30
+  const triChunked = meshes.reduce((a, m) => a + m.geometry.attributes.position.length / 9, 0);
+  ok(triChunked === expectedQuads * 2,
+    'chunk sync: tanpa muka internal (quads ' + (triChunked / 2) + ' == ' + expectedQuads + ')');
 
   // cut mengubah mesh chunk yang benar
   s._dirtyChunks.clear();
@@ -424,4 +425,4 @@ git commit -m "feat(tool): tool magazine 20 posisi (bukan 3)"
 
 - **Spec coverage:** §4 arsitektur (Task 2-3), §4b warna cut (Task 6), §4c offset manual (Task 7), §5 data model (Task 2), §6 protokol per-chunk (Task 3-4), §7 ordering (Task 4), §8 dirty mapping (Task 2), §9 tepi kasus (Task 3 `empty`, dispose/resize; Task 4 fallback; loop terbatas `maxChunksPerUpdate`), §10 bench (Task 5), §11 testing (semua task), §3 non-goals dihormati (tak ada heightmap/LOD). Task 8 (magazine 20) adalah setup UI, di luar spec meshing.
 - **Keputusan tertunda yang disadari:** `colorRaw` berubah (ganti material) belum me-remesh otomatis — langka, dicatat sebagai keterbatasan (spec §9); tidak ada task.
-- **Orientasi chunk:** Task 3 memakai origin dunia (bukan `mesh.position`) agar konsisten dengan `buildGreedyGeometry`; uji Review-Focus posisi ada di Task 3 (implisit lewat kecocokan tri single vs chunked; jika reviewer ingin eksplisit, tambah cek bounding box chunk).
+- **Orientasi chunk:** Task 3 memakai origin dunia (bukan `mesh.position`) agar konsisten dengan `buildGreedyGeometry`; uji Review-Focus "tanpa muka internal" ada di Task 3 lewat jumlah muka analitik (quads tersubdivisi chunk), bukan kesamaan tri dengan grid tunggal (yang secara matematis tak mungkin karena greedy tak melintasi batas chunk).
