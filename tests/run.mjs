@@ -751,6 +751,34 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(s.chunks.every((c) => !c.mesh || c.mesh.visible === false), 'chunk sync: setVisible menyembunyikan semua chunk');
 }
 
+// ---------- chunk async (Task realtime cutting) ----------
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const { buildGreedyGeometry } = await import('../src/stock/greedyMesh.js');
+  const scene = { children: [], add(m) { this.children.push(m); }, remove(m) { this.children = this.children.filter((x) => x !== m); } };
+  // service yang mengembalikan geometry chunk dari spec (neck: build greedy dari spec)
+  const svc = { request(spec) { return Promise.resolve(buildGreedyGeometry(spec)); }, dispose() {} };
+  const s = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8, meshService: svc });
+  for (let f = 0; f < 20; f++) { s.updateMesh(scene, true); await new Promise((r) => setTimeout(r, 0)); }
+  ok(s.chunks.filter((c) => c.mesh).length === s.cw * s.chN, 'chunk async: semua chunk ter-mesh dari reply');
+
+  // fallback: service reject → chunk di-mesh sinkron
+  const bad = { request() { return Promise.reject(new Error('x')); }, dispose() {} };
+  const s2 = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8, meshService: bad });
+  s2.updateMesh(scene, true); await new Promise((r) => setTimeout(r, 0));
+  ok(s2.chunks.some((c) => c.mesh), 'chunk async: service gagal → fallback sinkron');
+
+  // balasan yang datang SETELAH dispose() harus dibuang (versi chunk di-bump)
+  const pending = [];
+  const ctl = { request(spec) { return new Promise((res) => pending.push(() => res(buildGreedyGeometry(spec)))); }, dispose() {} };
+  const s3 = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8, meshService: ctl });
+  s3.updateMesh(scene, true);
+  s3.dispose(scene);
+  for (const f of pending) f();          // balasan telat
+  await new Promise((r) => setTimeout(r, 0));
+  ok(s3.chunks.every((c) => c.mesh === null), 'chunk async: balasan setelah dispose dibuang (mesh tetap null)');
+}
+
 // ---------- H1: escapeHtml (cegah XSS nama fixture) ----------
 {
   const { escapeHtml } = await import('../src/util/html.js');

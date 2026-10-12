@@ -317,7 +317,28 @@ export class VoxelStock {
     let n = 0;
     for (const id of [...this._dirtyChunks]) {
       if (n >= this.maxChunksPerUpdate) break;
-      this._meshChunkSync(this.chunks[id], scene);
+      const chunk = this.chunks[id];
+      if (chunk.pending) continue;
+      if (!this.meshService) {
+        this._meshChunkSync(chunk, scene);
+        n++;
+        continue;
+      }
+      const spec = this._buildChunkSpec(chunk);
+      this._dirtyChunks.delete(id);
+      chunk.dirty = false;
+      const token = ++chunk.version;
+      chunk.pending = true;
+      this.meshService.request(spec).then((geo) => {
+        if (token !== chunk.version) return;
+        chunk.pending = false;
+        this._applyChunkGeometry(chunk, geo ? this._geoFrom(geo) : null, scene);
+        if (chunk.dirty) this._dirtyChunks.add(chunk.id);
+      }).catch(() => {
+        if (token !== chunk.version) return;
+        chunk.pending = false;
+        this._meshChunkSync(chunk, scene);
+      });
       n++;
     }
   }
