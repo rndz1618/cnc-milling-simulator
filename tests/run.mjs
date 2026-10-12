@@ -663,6 +663,9 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const cutExpected = dark[0] * 0.45;
   ok(Array.from(col).some((c, i) => i % 3 === 0 && Math.abs(c - cutExpected) < 1e-4),
     'warna cut: muka cut = colorRaw*0.45 (kontras vs steel raw), cari ' + cutExpected);
+  const spec = s._buildChunkSpec(s.chunks[0]);
+  ok(Array.isArray(spec.colorCut) && Math.abs(spec.colorCut[0] - cutExpected) < 1e-9,
+    'warna cut: spek chunk meneruskan colorCut turunan');
 }
 
 // ---------- Tahap 8: holder crash ----------
