@@ -160,7 +160,7 @@ Ganti blok `Tahap 8: VoxelStock async mesh` + blok regresi kontinu dengan:
   // jumlah muka permukaan luar ter-subdivisi chunk (greedy tak melintasi batas
   // chunk). cz=1 (nz penuh). quads = 2*(cy*cz + cx*cz + cx*cy).
   const expectedQuads = 2 * (s.chN * 1 + s.cw * 1 + s.cw * s.chN);   // 20x20x10 chunk 8 -> 30
-  const triChunked = meshes.reduce((a, m) => a + m.geometry.attributes.position.length / 9, 0);
+  const triChunked = meshes.reduce((a, m) => a + m.geometry.attributes.position.count / 3, 0);
   ok(triChunked === expectedQuads * 2,
     'chunk sync: tanpa muka internal (quads ' + (triChunked / 2) + ' == ' + expectedQuads + ')');
 
