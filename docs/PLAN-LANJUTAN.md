@@ -15,7 +15,7 @@ istilah teknis boleh English.
 | Simulator | ✅ Alarm menghentikan eksekusi (RESET untuk lanjut); soft limit halt; G00 nabrak material = RAPID CRASH (sampling radius); single block 1 blok/Cycle Start; M00/M01 hold; H offset belum diisi = alarm. |
 | Tool | ✅ Data-driven: dia/flute/overall dari tool table → geometri 3D. |
 | Stock/fixture | ✅ Ukuran + posisi manual (top-center/top-corner/custom), auto-fit sebagai saran, template vise visual, marker WCS per-fixture berlabel. |
-| Test | ✅ `npm test` — 167 unit test (golden file O20018 dari program nyata Jack). |
+| Test | ✅ `npm test` — 172 unit test (golden file O20018 dari program nyata Jack). |
 | Build | ✅ Vite dev/build/preview; deploy Vercel otomatis dari `main`. |
 
 **Invarian yang wajib dijaga:**
@@ -67,6 +67,7 @@ Tiga triad sumbu = **bukan bug**: (1) **ORIGIN MESIN** (oranye, di meja) titik n
 - UI: sub-tab **FIXTURE** (ganti STOCK) — daftar fixture (maks 6, satu per WCS G54–G59), parameter vise (lebar/tinggi rahang, bukaan, base), material stok (visual), skenario bernama (`localStorage` `cnc-sim-scenarios`: layout + program + WCS + tool).
 - Wizard **touch-off** (`src/machine/TouchOff.js`): pilih fixture + edge (x±/y±/z-top), readout jarak ke `edgePlane`, PROBE ke kontak, SET WCS menulis `machine.wcs[wcs][axis] = contactOffset(...)`.
 **Selesai jika:** skenario 2 ragum O20018 menampilkan 2 vise + 2 stok terpisah yang masing-masing terpotong blok G54/G55-nya. ✓ (golden test 2-ragum + smoke FIXTURE/wizard)
+- **v0.14.0 (H2/M5 selesai):** edit WCS/touch-off memindahkan stok+vise lewat `FixtureManager.reposition()` (origin saja — material terpotong tetap); geser fixture X/Y; `custom` di-seed dari origin saat ini; magazine 20 tool; warna potong kontras.
 
 ### Tahap 8 — Material removal v2 — SELESAI (v0.13.0)
 - **Greedy mesher** (`src/stock/greedyMesh.js`, `buildGreedyGeometry`): quad-merge permukaan voxel seragam → jumlah triangle turun drastis (stok penuh 100×80×20 = 12 tris, hanya sisi terluar). Dipakai `VoxelStock` (fallback box bila grid kosong).
@@ -86,7 +87,7 @@ Tiga triad sumbu = **bukan bug**: (1) **ORIGIN MESIN** (oranye, di meja) titik n
 
 ## 5. Catatan handoff untuk AI harness lain
 
-**Aman dilanjutkan AI lain** karena: kode modular dengan batas tugas jelas, 167 unit test sebagai jaring pengaman regresi, invarian tertulis (bagian 1), dan program uji nyata (O20018) tersedia.
+**Aman dilanjutkan AI lain** karena: kode modular dengan batas tugas jelas, 172 unit test sebagai jaring pengaman regresi, invarian tertulis (bagian 1), dan program uji nyata (O20018) tersedia.
 
 **Urutan baca wajib:** `README.md` → dokumen ini → header `src/machine/Parser.js` (format entri) → `src/machine/MachineState.js` (model koordinat) → `src/sim/Simulator.js`.
 

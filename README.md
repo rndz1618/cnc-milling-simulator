@@ -28,7 +28,7 @@ npm install
 npm run dev      # dev server (Vite)
 npm run build    # production build → dist/
 npm run preview  # serve the production build
-npm test         # unit test 167 kasus (golden file: O20018)
+npm test         # unit test 172 kasus (golden file: O20018)
 npm run bench:mesh  # bench greedy mesher (ms + triangle)
 ```
 
