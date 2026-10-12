@@ -247,67 +247,98 @@ export class VoxelStock {
     return this._geoFrom(g);
   }
 
-  _swapGeometry(geo, scene) {
-    if (!this.mesh) {
-      this.mesh = new THREE.Mesh(geo, this.material);
-      this.mesh.castShadow = true;
-      this.mesh.receiveShadow = true;
-      this.mesh.name = 'stock';
-      scene.add(this.mesh);
-    } else {
-      this.mesh.geometry.dispose();
-      this.mesh.geometry = geo;
+  _buildChunkSpec(chunk) {
+    const W = this.chunkVoxels + 2;
+    const baseIx = chunk.gx * this.chunkVoxels;
+    const baseIy = chunk.gy * this.chunkVoxels;
+    const chunkW = Math.min(this.chunkVoxels, this.nx - baseIx);
+    const chunkH = Math.min(this.chunkVoxels, this.ny - baseIy);
+    const grid = new Uint8Array(W * W * this.nz);
+    for (let iz = 0; iz < this.nz; iz++) {
+      for (let sy = 0; sy < W; sy++) {
+        for (let sx = 0; sx < W; sx++) {
+          const ix = baseIx - 1 + sx;
+          const iy = baseIy - 1 + sy;
+          if (ix < 0 || ix >= this.nx || iy < 0 || iy >= this.ny) continue;
+          grid[iz * W * W + sy * W + sx] = this.grid[this.idx(ix, iy, iz)];
+        }
+      }
     }
+    return {
+      grid,
+      nx: W, ny: W, nz: this.nz,
+      originX: this.originX + (baseIx - 1) * this.res,
+      originY: this.originY + (baseIy - 1) * this.res,
+      originZ: this.originZ,
+      res: this.res,
+      colorRaw: this.colorRaw,
+      emitBounds: { minX: 1, maxX: 1 + chunkW, minY: 1, maxY: 1 + chunkH, minZ: 0, maxZ: this.nz }
+    };
+  }
+
+  _applyChunkGeometry(chunk, geo, scene) {
+    if (!geo) {
+      if (chunk.mesh) {
+        scene.remove(chunk.mesh);
+        chunk.mesh.geometry.dispose();
+        chunk.mesh = null;
+      }
+      chunk.empty = true;
+      return;
+    }
+    if (!chunk.mesh) {
+      chunk.mesh = new THREE.Mesh(geo, this.material);
+      chunk.mesh.name = 'stock-chunk';
+      chunk.mesh.castShadow = true;
+      chunk.mesh.receiveShadow = true;
+      scene.add(chunk.mesh);
+    } else {
+      chunk.mesh.geometry.dispose();
+      chunk.mesh.geometry = geo;
+    }
+    chunk.empty = false;
+  }
+
+  _meshChunkSync(chunk, scene) {
+    const g = buildGreedyGeometry(this._buildChunkSpec(chunk));
+    this._applyChunkGeometry(chunk, g ? this._geoFrom(g) : null, scene);
+    chunk.dirty = false;
+    chunk.version++;
+    this._dirtyChunks.delete(chunk.id);
   }
 
   updateMesh(scene, force = false) {
-    if (!this._dirty && !force) return;
+    if (force) this._markAllChunksDirty();
+    if (this._dirtyChunks.size === 0) return;
     const now = performance.now();
     if (!force && now - this._lastRebuild < this.rebuildIntervalMs) return;
-    // Satu permintaan in-flight saja: worker greedy-mesh jauh lebih lambat dari
-    // rebuildIntervalMs, jadi mengirim tiap interval akan menumpuk antrean DAN
-    // membuat balasan selalu "basi" (mesh hanya ter-update saat cutting berhenti).
-    // Jangan reset _dirty saat menunggu — biar cut selama in-flight tetap diproses.
-    if (this.meshService && this._meshPending && !force) return;
     this._lastRebuild = now;
     this._dirty = false;
+    let n = 0;
+    for (const id of [...this._dirtyChunks]) {
+      if (n >= this.maxChunksPerUpdate) break;
+      this._meshChunkSync(this.chunks[id], scene);
+      n++;
+    }
+  }
 
-    if (this.meshService) {
-      const token = ++this._meshToken;
-      this._meshPending = true;
-      this.meshService.request({
-        grid: this.grid.slice(),
-        nx: this.nx,
-        ny: this.ny,
-        nz: this.nz,
-        originX: this.originX,
-        originY: this.originY,
-        originZ: this.originZ,
-        res: this.res,
-        colorRaw: this.colorRaw
-      }).then((g) => {
-        if (token !== this._meshToken) return;   // dibatalkan (dispose/resize)
-        this._meshPending = false;
-        if (!g || !g.position) { this._swapGeometry(this.buildGeometry(), scene); return; }
-        this._swapGeometry(this._geoFrom(g), scene);
-      }).catch(() => {
-        if (token !== this._meshToken) return;
-        this._meshPending = false;
-        this._swapGeometry(this.buildGeometry(), scene);   // service gagal → fallback sinkron
-      });
-    } else {
-      this._swapGeometry(this.buildGeometry(), scene);
+  setVisible(v) {
+    for (const c of this.chunks) {
+      if (c.mesh) c.mesh.visible = v;
     }
   }
 
   dispose(scene) {
     this._meshToken++;   // batalkan reply tertunda
-    if (this.mesh) {
-      scene.remove(this.mesh);
-      this.mesh.geometry.dispose();
-      this.material.dispose();
-      this.mesh = null;
+    for (const c of this.chunks) {
+      if (c.mesh) {
+        scene.remove(c.mesh);
+        c.mesh.geometry.dispose();
+        c.mesh = null;
+      }
+      c.version++;
     }
+    this.material.dispose();
   }
 
   get remainingRatio() {

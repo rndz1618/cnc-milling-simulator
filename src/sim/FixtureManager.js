@@ -64,13 +64,12 @@ export class FixtureManager {
   reset() {
     for (const e of this.entries) {
       e.stock.reset();
-      e.stock._dirty = true;
     }
   }
 
   setVisible(v) {
     for (const e of this.entries) {
-      if (e.stock.mesh) e.stock.mesh.visible = v;
+      e.stock.setVisible(v);
       if (e.vise) e.vise.visible = v;
     }
   }

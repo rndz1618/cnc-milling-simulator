@@ -719,61 +719,36 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   svcErr.dispose();
 }
 
-// ---------- Tahap 8: VoxelStock async mesh ----------
+// ---------- chunk meshing sinkron (Task realtime cutting) ----------
 {
   const { VoxelStock } = await import('../src/stock/VoxelStock.js');
   const scene = { children: [], add(m) { this.children.push(m); }, remove(m) { this.children = this.children.filter((x) => x !== m); } };
-  const calls = [];
-  const fake = {
-    request(spec) { calls.push(spec); return Promise.resolve({ position: new Float32Array([0,0,0,1,0,0,0,1,0]), normal: new Float32Array([0,1,0,0,1,0,0,1,0]), color: new Float32Array([1,1,1,1,1,1,1,1,1]) }); },
-    dispose() {}
-  };
-  const s = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0, meshService: fake });
-  s.updateMesh(scene, true);
-  await new Promise((r) => setTimeout(r, 0));    // tunggu microtask reply
-  ok(calls.length === 1, 'VoxelStock async: kirim 1 request ke service');
-  ok(!!s.mesh && !!s.mesh.geometry, 'VoxelStock async: mesh terpasang dari reply');
-  ok(s.grid.every ? s.grid.length === 8 : true, 'VoxelStock async: grid asli tetap utuh (bukan transfer)');
-  ok(s.grid.reduce((a, b) => a + b, 0) > 0, 'VoxelStock async: grid asli tidak kehilangan data');
+  const s = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8 });
+  for (let f = 0; f < 50; f++) s.updateMesh(scene, true);   // bangun semua chunk (bounded 4/frame → beberapa frame)
+  const meshes = s.chunks.map((c) => c.mesh).filter(Boolean);
+  ok(meshes.length === s.cw * s.chN, 'chunk sync: semua chunk punya mesh (' + meshes.length + '/' + (s.cw * s.chN) + ')');
+  ok(meshes.every((m) => m.name === 'stock-chunk'), 'chunk sync: nama mesh = stock-chunk');
 
-  // service gagal → fallback sinkron (mesh tetap ada)
-  const bad = { request() { return Promise.reject(new Error('x')); }, dispose() {} };
-  const s2 = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0, meshService: bad });
-  s2.updateMesh(scene, true);
-  await new Promise((r) => setTimeout(r, 0));
-  ok(!!s2.mesh && !!s2.mesh.geometry, 'VoxelStock async: service gagal → fallback sinkron');
-}
+  // Tanpa muka internal: stok SOLID yg di-mesh per-chunk menghasilkan tepat
+  // jumlah muka permukaan luar ter-subdivisi chunk (greedy tak melintasi batas
+  // chunk). cz=1 (nz penuh). quads = 2*(cy*cz + cx*cz + cx*cy).
+  const expectedQuads = 2 * (s.chN * 1 + s.cw * 1 + s.cw * s.chN);   // 20x20x10 chunk 8 -> 30
+  const triChunked = meshes.reduce((a, m) => a + m.geometry.attributes.position.count / 3, 0);
+  ok(triChunked === expectedQuads * 2,
+    'chunk sync: tanpa muka internal (quads ' + (triChunked / 2) + ' == ' + expectedQuads + ')');
 
-// ---------- Bugfix: mesh tetap ter-update SAAT cutting kontinu (worker async) ----------
-// Regresi: token "latest-wins" lama membuang SETIAP balasan worker selama ada
-// permintaan lebih baru yang dikirim. Karena worker ~jauh lebih lambat dari
-// rebuildIntervalMs, saat cutting kontinu semua balasan basi → mesh hanya
-// ter-update ketika cutting berhenti (akhir program). Test: dengan service
-// lambat + cutting kontinu, mesh harus ter-update beberapa kali, bukan 0x.
-{
-  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
-  const { buildGreedyGeometry } = await import('../src/stock/greedyMesh.js');
-  const scene = { children: [], add(m) { this.children.push(m); }, remove(m) { this.children = this.children.filter((x) => x !== m); } };
-  const DELAY = 40;
-  const slow = {
-    request(spec) { return new Promise((res) => setTimeout(() => res(buildGreedyGeometry(spec)), DELAY)); },
-    dispose() {}
-  };
-  const s = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 2, originX: 0, originY: 0, originZ: -10, meshService: slow });
-  s.rebuildIntervalMs = 5;
-  let swaps = 0;
-  const origSwap = s._swapGeometry.bind(s);
-  s._swapGeometry = (g, sc) => { swaps++; return origSwap(g, sc); };
+  // cut mengubah mesh chunk yang benar
+  s._dirtyChunks.clear();
+  s.cutSegment(10, 10, -2, 10, 10, -2, 2);
+  ok(s._dirtyChunks.size > 0, 'chunk sync: cut menandai chunk kotor');
+  const before = s.chunks[s._chunkId(1, 1)].mesh.geometry.attributes.position.count;
   s.updateMesh(scene, true);
-  await new Promise((r) => setTimeout(r, DELAY + 20));
-  ok(!!s.mesh && !!s.mesh.geometry, 'mesh kontinu: mesh awal terbentuk');
-  swaps = 0;
-  for (let i = 0; i < 25; i++) {
-    s.cutSegment(i * 0.7, 0, -2, i * 0.7 + 1, 20, -2, 2);   // swath baru tiap iterasi → grid selalu berubah
-    await new Promise((r) => setTimeout(r, 12));
-    s.updateMesh(scene);
-  }
-  ok(swaps >= 2, 'mesh kontinu: mesh ter-update saat cutting berjalan (bukan hanya di akhir) — swaps=' + swaps);
+  ok(s.chunks[s._chunkId(1, 1)].mesh.geometry.attributes.position.count !== before ||
+     s.chunks[s._chunkId(1, 1)].empty, 'chunk sync: chunk terpotong di-remesh');
+
+  // setVisible
+  s.setVisible(false);
+  ok(s.chunks.every((c) => !c.mesh || c.mesh.visible === false), 'chunk sync: setVisible menyembunyikan semua chunk');
 }
 
 // ---------- H1: escapeHtml (cegah XSS nama fixture) ----------
