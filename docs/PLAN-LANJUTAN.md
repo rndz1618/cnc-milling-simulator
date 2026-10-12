@@ -77,9 +77,10 @@ Tiga triad sumbu = **bukan bug**: (1) **ORIGIN MESIN** (oranye, di meja) titik n
 - **Heightfield/dexel DITUNDA** (spec §YAGNI): representasi alternatif 3-axis hanya digarap jika pengukuran membuktikan worker+greedy kurang. Belum dikerjakan.
 **Selesai jika:** program besar (≥2000 gerakan) tetap 60fps; G00 dengan holder menabrak stok tinggi memunculkan alarm HOLDER CRASH. ✓ alarm HOLDER CRASH (unit test); FPS 60 program penuh = belum terukur (lihat catatan di atas).
 
-### Tahap 9 — Fondasi SaaS
+### Tahap 9 — Fondasi SaaS (RENCANA: branch/repo TERPISAH)
 - Akun + multi-tenant; machine profile per institusi (travel, rpm, ATC, controller); pustaka program; **scenario builder + penilaian** (checklist otomatis, kesalahan tercatat: crash/offset salah/waktu); ekspor laporan.
 **Selesai jika:** dua tenant melihat profil mesin berbeda; skenario training dinilai otomatis dengan skor.
+**Catatan:** karena butuh backend & perubahan mendasar, dikerjakan di branch/repo terpisah; repo simulator ini tetap sebagai engine client-side. Tulis SPEC dulu.
 
 ### Tahap 10 (opsional) — PWA offline, layout tablet, i18n ID/EN.
 

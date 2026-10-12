@@ -1,19 +1,25 @@
-# HANDOFF.md — state gelombang terakhir
+# HANDOFF.md — state gelombang terakhir (v0.14.0)
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
 > Daftar tunggal semua item tertunda (Tahap 6–8 + review): lihat `docs/BACKLOG.md`.
-commit: 488ee7d
-status: v0.13.2 — bugfix: (1) material kini ter-update **saat** cutting berjalan (bukan hanya di akhir) — `VoxelStock.updateMesh` dibatasi satu permintaan meshing in-flight; (2) H1 escape nama fixture (`escapeHtml`); (3) H3 `G4 X` = detik. Di atas v0.13.0 (material removal v2).
-verify: test 167/167 · build OK · smoke browser OK (shell JSON + FEED HOLD + RPM + FIXTURE/scenario + smoke XSS nama fixture + wizard touch-off + mesh worker aktif) · bench:mesh OK
+commit: a0b72ff
+status: v0.14.0 — W1 fixture polish: fix H2 (stok+vise ikut offset WCS), fixture geser bebas, warna potong kontras, magazine 20 tool.
+verify: test 172/172 · build OK · smoke browser OK (magazine 20, geser fixture mengubah origin, plus cek lama).
 ## Sedang berjalan
 - (tidak ada)
 ## Berikutnya
-1. **Tahap 9** (fondasi SaaS): akun + multi-tenant, machine profile per institusi, pustaka program, scenario builder + penilaian otomatis (checklist, kesalahan tercatat: crash/offset salah/waktu), ekspor laporan.
-2. Setelah itu: Tahap 10 (opsional) — PWA offline, layout tablet, i18n ID/EN.
-- Ditunda (kandidat, dari Tahap 6): spasi-pause tak set `holdReason`; akuntansi `elapsed` ATC; miter tak di-clamp; G28 stale pos di Compensator. Plus **G92** (work coordinate shift) di luar scope v0.11.0 (spec Tahap 6 §4).
-- Ditunda (kandidat, dari Tahap 7): posisi stok diturunkan dari WCS saat build → edit WCS/touch-off tak rebuild mesh (mesh vs toolpath bisa divergen); touch-off X/Y hanya tepat untuk `top-corner` (default `top-center` butuh koreksi setengah ukuran); `custom` placement tanpa input offset (stok lompat ke origin mesin); `normalizeFixtures` diam-diam buang WCS duplikat.
-- Ditunda (Tahap 8, YAGNI): **heightfield/dexel** utk 3-axis — hanya jika pengukuran membuktikan worker+greedy kurang. **FPS program ≥2000 gerakan tetap 60fps BELUM terukur** (bench Task 8 mengukur waktu greedy mesh, bukan FPS); pengukuran FPS penuh = tindak lanjut bila perlu.
+1. **Tahap 9 (fondasi SaaS)** — dipindah ke branch/repo TERPISAH (perubahan mendasar: akun + multi-tenant, backend, penilaian). Tulis SPEC dulu sebelum kode.
+2. Kandidat dari BACKLOG: M1 G92, M2 clamp miter G41, M3 G28 stale di `Compensator`, M4 touch-off XY `top-center`, M10 ukur FPS.
+- Ditunda (kandidat, dari Tahap 6): spasi-pause tak set `holdReason`; akuntansi `elapsed` ATC; miter tak di-clamp; G28 stale pos di Compensator. Plus **G92** di luar scope v0.11.0.
+- Ditunda (Tahap 8, YAGNI): pengukuran FPS penuh bila perlu.
+
+## Catatan gelombang terakhir (2026-10-12) — v0.14.0 (W1 fixture polish)
+- **H2 SELESAI**: `FixtureManager.reposition()` memindahkan stok (origin saja, voxel tetap → material terpotong aman) + vise mengikuti offset WCS. Dipanggil di semua jalur edit WCS (input OFFSET/ZERO/Reset/Apply) dan touch-off. Unit test: origin bergeser, `remainingRatio` tetap.
+- **Geser fixture**: `stockOriginFor` menambahkan `offset` pada placement `top-center`/`top-corner`; input **Geser X/Y** di editor fixture. `custom` di-seed dari origin saat ini (tutup M5). Smoke: ubah offX → `stockInfo` berubah.
+- **Warna potong**: `COLOR_CUT` → teal `[0.20,0.55,0.58]` (kontras vs brass & alum); emissive material dinetralkan. Test kontras > 0.4.
+- **Magazine 20 tool**: `toolTable` 20 entri; baris tabel TOOL dirender dinamis (`renderToolTable`), bukan hardcode HTML.
+- Gate: `npm test` 172/172 · `npm run verify` hijau.
 ## Catatan gelombang terakhir (2026-10-11) — bugfix v0.13.1 (H1 + H3)
 - **H1 — XSS nama fixture**: helper baru `src/util/html.js` (`escapeHtml`: escape `& < > " '`). Dipakai di `main.js` pada render daftar fixture (`fixtureRowHtml`) dan opsi selector WCS. Unit test (`tests/run.mjs`) + assertion smoke end-to-end (`verify.mjs`: skenario jahat `<img src=x onerror=...>` di-load → `window.__xss` tak ter-set + `textContent` utuh). Diverifikasi RED dulu (tanpa escape) lalu GREEN.
 - **H3 — `G4 X` di G20**: `Parser.js` menyimpan `nxRaw` (nilai X sebelum `scale()`); dwell pakai `nxRaw`, bukan `nx` ter-konversi. `G4 P` memang sudah tak ter-skala. Unit test: `G20\nG4 X0.5` → `p=0.5` (bukan 12.7).
