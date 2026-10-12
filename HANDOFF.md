@@ -19,6 +19,7 @@ verify: test 172/172 · build OK · smoke browser OK (magazine 20, geser fixture
 - **Geser fixture**: `stockOriginFor` menambahkan `offset` pada placement `top-center`/`top-corner`; input **Geser X/Y** di editor fixture. `custom` di-seed dari origin saat ini (tutup M5). Smoke: ubah offX → `stockInfo` berubah.
 - **Warna potong**: `COLOR_CUT` → teal `[0.20,0.55,0.58]` (kontras vs brass & alum); emissive material dinetralkan. Test kontras > 0.4.
 - **Magazine 20 tool**: `toolTable` 20 entri; baris tabel TOOL dirender dinamis (`renderToolTable`), bukan hardcode HTML.
+- **Badge versi otomatis**: `vite.config.js` `define __APP_VERSION__` dari `package.json`; `index.html` badge diisi `#appVersion`; smoke assert `badge === 'v'+versi` (anti-basi).
 - Gate: `npm test` 172/172 · `npm run verify` hijau.
 ## Catatan gelombang terakhir (2026-10-11) — bugfix v0.13.1 (H1 + H3)
 - **H1 — XSS nama fixture**: helper baru `src/util/html.js` (`escapeHtml`: escape `& < > " '`). Dipakai di `main.js` pada render daftar fixture (`fixtureRowHtml`) dan opsi selector WCS. Unit test (`tests/run.mjs`) + assertion smoke end-to-end (`verify.mjs`: skenario jahat `<img src=x onerror=...>` di-load → `window.__xss` tak ter-set + `textContent` utuh). Diverifikasi RED dulu (tanpa escape) lalu GREEN.
