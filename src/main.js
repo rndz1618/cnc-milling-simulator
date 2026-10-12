@@ -4,7 +4,7 @@ import { boundsFromPoints, formatStockSize } from './stock/fitStock.js';
 import { parseGCode } from './machine/Parser.js';
 import { applyCutterComp } from './machine/Compensator.js';
 import {
-  makeFixture, normalizeFixtures, serializeScenario, parseScenario, MATERIALS
+  makeFixture, normalizeFixtures, serializeScenario, parseScenario, MATERIALS, stockOriginFor
 } from './machine/Fixtures.js';
 import { edgePlane, contactOffset, checkContact, surfaceCoord } from './machine/TouchOff.js';
 import { escapeHtml } from './util/html.js';
@@ -99,7 +99,10 @@ function fixtureFromStockSetup() {
     wcs: 'G54', name: 'Ragum 1',
     stock: { sizeX: stockSetup.sizeX, sizeY: stockSetup.sizeY, sizeZ: stockSetup.sizeZ },
     placement: stockSetup.placement,
-    offset: { x: stockSetup.originX, y: stockSetup.originY, z: stockSetup.originZ }
+    // offset hanya absolut untuk placement 'custom'; preset memakai geser operator.
+    offset: stockSetup.placement === 'custom'
+      ? { x: stockSetup.originX, y: stockSetup.originY, z: stockSetup.originZ }
+      : { x: 0, y: 0, z: 0 }
   });
 }
 
@@ -109,10 +112,29 @@ let wcsMarkersGroup = null;
 const toolMesh = createToolMesh({ diameter: 12, flute: 36, overall: 100 });
 scene.add(toolMesh);
 
+// Magazine 20 tool (realita mesin CNC rata-rata) — dia/flute/overall dipakai
+// toolSpec 3D; length diisi operator via TOOL OFFSET MEASURE.
 const toolTable = {
   1: { length: 0, dia: 6, flute: 18, overall: 80, type: 'End Mill' },
   2: { length: 0, dia: 10, flute: 30, overall: 95, type: 'End Mill' },
-  3: { length: 0, dia: 12, flute: 36, overall: 100, type: 'End Mill' }
+  3: { length: 0, dia: 12, flute: 36, overall: 100, type: 'End Mill' },
+  4: { length: 0, dia: 16, flute: 40, overall: 100, type: 'End Mill' },
+  5: { length: 0, dia: 20, flute: 45, overall: 110, type: 'End Mill' },
+  6: { length: 0, dia: 3, flute: 12, overall: 60, type: 'End Mill' },
+  7: { length: 0, dia: 4, flute: 14, overall: 65, type: 'End Mill' },
+  8: { length: 0, dia: 8, flute: 24, overall: 90, type: 'End Mill' },
+  9: { length: 0, dia: 25, flute: 50, overall: 120, type: 'Face Mill' },
+  10: { length: 0, dia: 50, flute: 60, overall: 130, type: 'Face Mill' },
+  11: { length: 0, dia: 6, flute: 18, overall: 80, type: 'Ball Nose' },
+  12: { length: 0, dia: 10, flute: 30, overall: 95, type: 'Ball Nose' },
+  13: { length: 0, dia: 12.5, flute: 40, overall: 110, type: 'Drill' },
+  14: { length: 0, dia: 8.5, flute: 35, overall: 100, type: 'Drill' },
+  15: { length: 0, dia: 5, flute: 25, overall: 85, type: 'Drill' },
+  16: { length: 0, dia: 6, flute: 20, overall: 90, type: 'Tap M6' },
+  17: { length: 0, dia: 10, flute: 20, overall: 90, type: 'Chamfer' },
+  18: { length: 0, dia: 2, flute: 8, overall: 55, type: 'Engraver' },
+  19: { length: 0, dia: 14, flute: 35, overall: 105, type: 'Roughing' },
+  20: { length: 0, dia: 16, flute: 40, overall: 105, type: 'Roughing' }
 };
 
 // ---------- State ----------
@@ -209,6 +231,24 @@ function syncOffsetInputsFromTables() {
     });
   });
 }
+
+// Baris tabel tool dirender dari toolTable (magazine 20), bukan HTML hardcode.
+// Dipanggil di sini (top-level) sebelum binding baris di bawah agar event terpasang.
+function renderToolTable() {
+  const tbody = document.querySelector('#toolOffsetTable tbody');
+  if (!tbody) return;
+  tbody.innerHTML = Object.keys(toolTable).map((n) => {
+    const t = toolTable[n];
+    return '<tr data-tool="' + n + '"' + (+n === activeTool ? ' class="active-row"' : '') + '>' +
+      '<td>T' + n + '</td>' +
+      '<td><input type="number" step="0.001" value="' + t.length + '" data-field="length" /></td>' +
+      '<td><input type="number" step="0.1" value="' + t.dia + '" data-field="dia" /></td>' +
+      '<td><input type="number" step="1" value="' + t.flute + '" data-field="flute" /></td>' +
+      '<td><input type="number" step="1" value="' + t.overall + '" data-field="overall" /></td>' +
+      '</tr>';
+  }).join('');
+}
+renderToolTable();
 
 // ---------- Alarm ----------
 function pushAlarm(msg, line) {
@@ -471,6 +511,10 @@ function fixtureRowHtml(f, idx) {
     '<label>Posisi <select data-field="placement">' + placeOpts + '</select></label>' +
     '</div>' +
     '<div class="stock-grid">' +
+    '<label>Geser X <input type="number" step="0.5" data-field="offX" value="' + ((f.offset && f.offset.x) || 0) + '" /></label>' +
+    '<label>Geser Y <input type="number" step="0.5" data-field="offY" value="' + ((f.offset && f.offset.y) || 0) + '" /></label>' +
+    '</div>' +
+    '<div class="stock-grid">' +
     '<label>Jaw W <input type="number" data-field="jawWidth" value="' + f.vise.jawWidth + '" /></label>' +
     '<label>Jaw H <input type="number" data-field="jawHeight" value="' + f.vise.jawHeight + '" /></label>' +
     '<label>Opening <input type="number" data-field="opening" value="' + f.vise.opening + '" /></label>' +
@@ -488,7 +532,17 @@ function applyFixtureField(f, field, raw) {
   const num = parseFloat(raw);
   if (field === 'wcs') f.wcs = raw;
   else if (field === 'material') f.stock.material = raw;
-  else if (field === 'placement') f.placement = raw;
+  else if (field === 'placement') {
+    // Pindah ke 'custom' tanpa input offset → stok lompat ke origin mesin (M5).
+    // Bekukan origin saat ini sebagai offset absolut supaya stok tidak melompat.
+    if (raw === 'custom' && f.placement !== 'custom') {
+      const cur = stockOriginFor(f, machine.wcs[f.wcs] || { x: 0, y: 0, z: 0 });
+      f.offset = { x: cur.x, y: cur.y, z: cur.z };
+    }
+    f.placement = raw;
+  }
+  else if (field === 'offX') f.offset.x = num || 0;
+  else if (field === 'offY') f.offset.y = num || 0;
   else if (field === 'stockX') f.stock.sizeX = Math.max(10, num || f.stock.sizeX);
   else if (field === 'stockY') f.stock.sizeY = Math.max(10, num || f.stock.sizeY);
   else if (field === 'stockZ') f.stock.sizeZ = Math.max(5, num || f.stock.sizeZ);
@@ -657,7 +711,11 @@ function refreshUI() {
     $('simTool').textContent = 'T' + (machine.tool || 1) + ' Ø' + (machine.toolDiameter || 6);
   }
   if ($('stockLeft')) {
-    $('stockLeft').textContent = Math.round(fixtures.remainingRatio * 100) + '%';
+    $('stockLeft').textContent = Math.round(stock.remainingRatio * 100) + '%';
+  }
+  if ($('stockInfo') && stock) {
+    $('stockInfo').textContent = fixtureState.length + ' fixture | origin mesin: ' +
+      stock.originX.toFixed(1) + ', ' + stock.originY.toFixed(1) + ', ' + stock.originZ.toFixed(1);
   }
 
   const pct = sim.moves.length ? Math.min(100, (sim.index / sim.moves.length) * 100) : 0;
@@ -972,8 +1030,10 @@ document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
       machine.wcs[row.dataset.wcs][inp.dataset.axis] = parseFloat(inp.value) || 0;
       savePersistedOffsets();
       computeMachineMoves();
+      fixtures.reposition();
       rebuildPreview();
       rebuildWcsMarkers();
+      refreshUI();
     });
   });
   const zeroBtn = row.querySelector('.btn-set-zero');
@@ -990,6 +1050,7 @@ document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
       machine.activeWcs = wcs;
       savePersistedOffsets();
       computeMachineMoves();
+      fixtures.reposition();
       rebuildPreview();
       rebuildWcsMarkers();
       updateActiveCodes();
@@ -1012,6 +1073,7 @@ if ($('btnResetWcs')) {
     savePersistedOffsets();
     syncOffsetInputsFromTables();
     computeMachineMoves();
+    fixtures.reposition();
     rebuildPreview();
     rebuildWcsMarkers();
     if (sim.state === 'alarm' || sim.state === 'hold') sim.stop();
@@ -1032,6 +1094,7 @@ if ($('btnApplyWcs')) {
     });
     savePersistedOffsets();
     computeMachineMoves();
+    fixtures.reposition();
     rebuildPreview();
     rebuildWcsMarkers();
     markTrain('partzero');
@@ -1279,6 +1342,7 @@ function touchOffSetWcs() {
   machine.wcs[f.wcs][off.axis] = off.value;
   savePersistedOffsets();
   computeMachineMoves();
+  fixtures.reposition();
   rebuildPreview();
   rebuildWcsMarkers();
   syncOffsetInputsFromTables();

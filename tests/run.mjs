@@ -457,6 +457,8 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   eq({ x: o.x, y: o.y, z: o.z }, { x: -60, y: -120, z: -30 }, 'Fixtures: top-center origin');
   const corner = makeFixture({ stock: { sizeX: 80, sizeY: 60, sizeZ: 20 }, placement: 'top-corner' });
   eq(stockOriginFor(corner, { x: 10, y: 20, z: 30 }), { x: 10, y: 20, z: 10 }, 'Fixtures: top-corner origin');
+  const shifted = makeFixture({ stock: { sizeX: 100, sizeY: 80, sizeZ: 20 }, placement: 'top-center', offset: { x: 5, y: -7, z: 0 } });
+  eq(stockOriginFor(shifted, { x: 0, y: 0, z: 0 }), { x: -45, y: -47, z: -20 }, 'Fixtures: geser offset top-center');
   const fx = migrateLegacyStock({ sizeX: 80, sizeY: 60, sizeZ: 20, placement: 'top-corner', originX: 1, originY: 2, originZ: 3 });
   eq(fx.length, 1); eq(fx[0].wcs, 'G54');
   const norm = normalizeFixtures([{ wcs: 'G60' }, { wcs: 'G54' }, { wcs: 'G54' }]);
@@ -497,6 +499,24 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const mgr = new FixtureManager({ scene: null, machine: createMachineState() });
   mgr.build([makeFixture({ wcs: 'G54' })]);
   ok(mgr.stockFor('G57') === null, 'stockFor WCS tanpa fixture → null');
+}
+
+// ---------- W1/H2: offset WCS berubah → stok geser, cut dipertahankan ----------
+{
+  const { FixtureManager } = await import('../src/sim/FixtureManager.js');
+  const { makeFixture } = await import('../src/machine/Fixtures.js');
+  const machine = createMachineState();
+  const mgr = new FixtureManager({ scene: null, machine });
+  mgr.build([makeFixture({ wcs: 'G54' })]);
+  const s = mgr.stockFor('G54');
+  const x0 = s.originX, y0 = s.originY;
+  s.cutCylinder(s.originX + 10, s.originY + 10, s.originZ, 3);
+  const cut0 = s.remainingRatio;
+  machine.wcs.G54 = { x: 25, y: -5, z: 4 };
+  mgr.reposition();
+  eq(s.originX, x0 + 25, 'H2: origin stok ikut offset WCS (+X)');
+  eq(s.originY, y0 - 5, 'H2: origin stok ikut offset WCS (−Y)');
+  eq(s.remainingRatio, cut0, 'H2: material terpotong dipertahankan saat reposition');
 }
 
 // ---------- Tahap 7: vise ber-parameter ----------
@@ -607,6 +627,8 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const colors = Array.from(g2.color);
   ok(colors.some((c) => Math.abs(c - COLOR_RAW[0]) < 1e-6), 'greedy: ada sisi raw (luar)');
   ok(colors.some((c) => Math.abs(c - COLOR_CUT[0]) < 1e-6), 'greedy: ada sisi cut (galian)');
+  const contrast = Math.hypot(COLOR_RAW[0] - COLOR_CUT[0], COLOR_RAW[1] - COLOR_CUT[1], COLOR_RAW[2] - COLOR_CUT[2]);
+  ok(contrast > 0.4, 'greedy: warna cut kontras vs raw (jarak ' + contrast.toFixed(2) + ')');
   const empty = buildGreedyGeometry({ ...solid, grid: new Uint8Array(4 * 4 * 4) });
   ok(empty === null, 'greedy: grid kosong → null');
 }
@@ -614,6 +636,7 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
 // ---------- Tahap 8: VoxelStock greedy ----------
 {
   const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const { COLOR_CUT } = await import('../src/stock/greedyMesh.js');
   const s = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0 });
   const geo = s.buildGeometry();
   const tri = (geo.attributes.position?.count || 0) / 3;
@@ -625,7 +648,7 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(s.cutSegment(0, 0, 0, 10, 0, 0, 3), 'VoxelStock: cut mengubah grid');
   const geo2 = s.buildGeometry();
   const col = geo2.attributes.color.array;
-  const cutR = 0.55;
+  const cutR = COLOR_CUT[0];
   ok(Array.from(col).some((c, i) => i % 3 === 0 && Math.abs(c - cutR) < 1e-6),
     'VoxelStock: setelah potong ada warna machined (cut)');
 }

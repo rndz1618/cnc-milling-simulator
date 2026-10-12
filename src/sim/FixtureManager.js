@@ -61,6 +61,35 @@ export class FixtureManager {
     return this.entries.map((e) => e.stock);
   }
 
+  /**
+   * Pindahkan stok & vise mengikuti offset WCS terbaru TANPA membangun ulang
+   * voxel grid (material terpotong tetap). Dipanggil saat offset WCS berubah
+   * (edit OFFSET/ZERO/touch-off) — menggeser jalur & marker tanpa ini membuat
+   * mesh stok/toolpath divergen (H2).
+   */
+  reposition() {
+    for (const e of this.entries) {
+      const origin = stockOriginFor(e.fixture, wcsOffset(this.machine, e.fixture.wcs));
+      const dx = origin.x - e.stock.originX;
+      const dy = origin.y - e.stock.originY;
+      const dz = origin.z - e.stock.originZ;
+      if (!dx && !dy && !dz) continue;
+      e.stock.originX = origin.x;
+      e.stock.originY = origin.y;
+      e.stock.originZ = origin.z;
+      e.origin = origin;
+      if (this.scene) {
+        e.stock.updateMesh(this.scene, true);
+        if (e.vise) {
+          // Grup vise memakai sumbu scene: X=mesin X, Y=mesin Z, Z=mesin Y.
+          e.vise.position.x += dx;
+          e.vise.position.y += dz;
+          e.vise.position.z += dy;
+        }
+      }
+    }
+  }
+
   reset() {
     for (const e of this.entries) {
       e.stock.reset();

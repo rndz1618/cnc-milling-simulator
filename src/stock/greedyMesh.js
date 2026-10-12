@@ -9,7 +9,9 @@
  */
 
 export const COLOR_RAW = [0.96, 0.78, 0.32]; // stok brass terang
-export const COLOR_CUT = [0.55, 0.58, 0.62]; // abu bekas pengerjaan
+// Permukaan bekas pengerjaan sengaja hue kontras (teal) terhadap SEMUA material
+// stok (brass/kuning, alum/abu) supaya hasil potong langsung terlihat.
+export const COLOR_CUT = [0.20, 0.55, 0.58];
 
 // 6 arah sisi; urutan & sumbu u/v persis VoxelStock.
 const FACES = [

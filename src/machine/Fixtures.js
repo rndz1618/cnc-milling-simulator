@@ -28,13 +28,15 @@ export function makeFixture(partial = {}) {
 export function stockOriginFor(fixture, wcsOffset) {
   const s = fixture.stock;
   const o = wcsOffset || { x: 0, y: 0, z: 0 };
+  const f = fixture.offset || { x: 0, y: 0, z: 0 };
+  // Preset (top-center/top-corner): origin relatif WCS + geser bebas operator.
   if (fixture.placement === 'top-center') {
-    return { x: o.x - s.sizeX / 2, y: o.y - s.sizeY / 2, z: o.z - s.sizeZ };
+    return { x: o.x - s.sizeX / 2 + f.x, y: o.y - s.sizeY / 2 + f.y, z: o.z - s.sizeZ + f.z };
   }
   if (fixture.placement === 'top-corner') {
-    return { x: o.x, y: o.y, z: o.z - s.sizeZ };
+    return { x: o.x + f.x, y: o.y + f.y, z: o.z - s.sizeZ + f.z };
   }
-  const f = fixture.offset;
+  // custom: offset = origin absolut (dipakai auto-fit dari koordinat mesin).
   return { x: f.x, y: f.y, z: f.z };
 }
 

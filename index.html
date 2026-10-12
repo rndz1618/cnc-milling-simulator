@@ -18,7 +18,7 @@
 <body>
   <header>
     <div class="hdr-left">
-      <h1>CNC Milling Simulator <span class="badge">v0.10.0</span></h1>
+      <h1>CNC Milling Simulator <span class="badge">v0.14.0</span></h1>
       <div class="mode-tabs" id="modeTabs">
         <button class="mode-tab" data-mode="edit">EDIT</button>
         <button class="mode-tab active" data-mode="mem">MEM</button>
@@ -140,29 +140,7 @@
           <div class="setup-hint">Tool Length / Diameter — TOOL OFFSET MEASURE</div>
           <table class="offset-table" id="toolOffsetTable">
             <thead><tr><th>T</th><th>Length</th><th>Dia</th><th>Flute</th><th>Overall</th></tr></thead>
-            <tbody>
-              <tr data-tool="1" class="active-row">
-                <td>T1</td>
-                <td><input type="number" step="0.001" value="0" data-field="length" /></td>
-                <td><input type="number" step="0.1" value="6" data-field="dia" /></td>
-                <td><input type="number" step="1" value="18" data-field="flute" /></td>
-                <td><input type="number" step="1" value="80" data-field="overall" /></td>
-              </tr>
-              <tr data-tool="2">
-                <td>T2</td>
-                <td><input type="number" step="0.001" value="0" data-field="length" /></td>
-                <td><input type="number" step="0.1" value="10" data-field="dia" /></td>
-                <td><input type="number" step="1" value="30" data-field="flute" /></td>
-                <td><input type="number" step="1" value="95" data-field="overall" /></td>
-              </tr>
-              <tr data-tool="3">
-                <td>T3</td>
-                <td><input type="number" step="0.001" value="0" data-field="length" /></td>
-                <td><input type="number" step="0.1" value="12" data-field="dia" /></td>
-                <td><input type="number" step="1" value="36" data-field="flute" /></td>
-                <td><input type="number" step="1" value="100" data-field="overall" /></td>
-              </tr>
-            </tbody>
+            <tbody><!-- baris tool dirender dari toolTable (main.js: renderToolTable) --></tbody>
           </table>
           <div class="setup-actions">
             <button class="btn btn-primary" id="btnApplyTool">Apply Active Tool</button>

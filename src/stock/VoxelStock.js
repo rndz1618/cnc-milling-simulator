@@ -40,8 +40,8 @@ export class VoxelStock {
       roughness: 0.42,
       flatShading: true,
       side: THREE.DoubleSide,
-      emissive: new THREE.Color(0x1a1208),
-      emissiveIntensity: 0.12
+      emissive: new THREE.Color(0x0a0a0a),
+      emissiveIntensity: 0.05
     });
     this._dirty = true;
     this._lastRebuild = 0;

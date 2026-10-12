@@ -94,6 +94,7 @@ try {
       modes: document.querySelectorAll('#modeTabs .mode-tab').length,
       dro: document.querySelectorAll('#droTabs .dro-tab').length,
       sk: document.querySelectorAll('#softkeys .sk').length,
+      toolRows: document.querySelectorAll('#toolOffsetTable tbody tr').length,
       linesVisible: vis('#gcodeLines'),
       feedHoldLabel: document.querySelector('#btnPause')?.textContent?.trim() || ''
     };
@@ -153,6 +154,7 @@ try {
     out.fixtureTab = !!tab && tab.textContent.trim() === 'FIXTURE';
     const rows = () => document.querySelectorAll('#fixtureList .fx-row').length;
     out.rowsBefore = rows();
+    out.hasShift = !!document.querySelector('#fixtureList .fx-row input[data-field="offX"]');
     const add = document.querySelector('#fxAdd');
     if (add) add.click();
     out.rowsAfter = rows();
@@ -168,6 +170,12 @@ try {
     document.querySelector('#scenarioLoad')?.click();
     out.loadMsg = document.querySelector('#sbMsg')?.textContent || '';
     out.rowsAfterLoad = document.querySelectorAll('#fixtureList .fx-row').length;
+    // Geser fixture: ubah offX → origin mesin stok (stockInfo) harus bergeser.
+    const info = () => document.querySelector('#stockInfo')?.textContent || '';
+    out.shiftBefore = info();
+    const offInp = document.querySelector('#fixtureList .fx-row input[data-field="offX"]');
+    if (offInp) { offInp.value = '10'; offInp.dispatchEvent(new Event('input', { bubbles: true })); }
+    out.shiftAfter = info();
     // H1: nama fixture berbahaya dari skenario TIDAK boleh dieksekusi (XSS).
     const payload = '<img src=x onerror="window.__xss=1">';
     const map2 = JSON.parse(localStorage.getItem('cnc-sim-scenarios') || '{}');
@@ -246,6 +254,7 @@ try {
   if (modeCount !== 5) problems.push('mode tabs=' + modeCount + ' (harus 5 dari JSON)');
   if (droCount !== 4) problems.push('dro tabs=' + droCount + ' (harus 4 dari JSON)');
   if (skCount !== 8) problems.push('softkeys=' + skCount + ' (harus 8 dari JSON)');
+  if (shell.toolRows < 20) problems.push('magazine tool < 20 (rows=' + shell.toolRows + ')');
   if (!linesVisible) problems.push('default mem: #gcodeLines tidak terlihat');
   if (!jogVisible || !progHidden) problems.push('mode JOG tidak menampilkan #panelJog / menyembunyikan #panelProgram');
   if (!mdiVisible) problems.push('mode MDI tidak menampilkan #mdiWrap');
@@ -257,6 +266,8 @@ try {
   if (!/^S\d+/.test(hdrSpindle || '')) problems.push('RPM aktual tidak tampil (hdrSpindle=' + hdrSpindle + ')');
   if (!fx.fixtureTab || !fx.fixtureVisible) problems.push('sub-tab FIXTURE tidak tampil (tab=' + fx.fixtureTab + ' visible=' + fx.fixtureVisible + ')');
   if (fx.rowsBefore < 1) problems.push('daftar fixture kosong (rows=' + fx.rowsBefore + ')');
+  if (!fx.hasShift) problems.push('input geser fixture (offX) tidak ada');
+  if (fx.shiftBefore === fx.shiftAfter) problems.push('geser fixture tidak mengubah origin stok (stockInfo tetap)');
   if (fx.rowsAfter <= fx.rowsBefore) problems.push('#fxAdd tidak menambah fixture (' + fx.rowsBefore + '->' + fx.rowsAfter + ')');
   if (!fx.saved) problems.push('skenario tidak tersimpan');
   if (fx.fxCount !== 2) problems.push('skenario 2-ragum tidak menyimpan 2 fixture (fxCount=' + fx.fxCount + ')');
