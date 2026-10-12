@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Material terpotong realtime mengikuti gerakan spindle (remesh per-chunk), warna cut kontras dengan raw material per material, dan fixture bisa digeser manual (offset X/Y/Z).
+**Goal:** Material terpotong realtime mengikuti gerakan spindle (remesh per-chunk), warna cut kontras dengan raw material per material, fixture bisa digeser manual (offset X/Y/Z), dan tool magazine 20 posisi.
 
 **Architecture:** `VoxelStock` dipecah jadi chunk XY (default 8 voxel, `nz` penuh). `cutCylinder`/`cutSegment` menandai chunk kotor; `updateMesh` me-remesh hanya chunk kotor (sinkron, atau via `meshService` per-chunk). Grid + cut + collision tetap di main thread.
 
@@ -383,10 +383,45 @@ git add src/main.js scripts/verify.mjs
 git commit -m "feat(fixture): input offset X/Y/Z untuk placement manual"
 ```
 
+### Task 8: Tool magazine 20 (setup)
+
+**Files:**
+- Modify: `index.html:141-166` (kosongkan `<tbody>` tabel tool)
+- Modify: `src/main.js` (`toolTable` L112, handler tool L1044-1056, panggil render saat init)
+- Test: `scripts/verify.mjs` (smoke)
+
+**Interfaces:**
+- Produces: `const TOOL_COUNT = 20;`. `toolTable` dibangun dari loop: tool 1-3 mempertahankan default sekarang; 4-20 default `{ length:0, dia:6, flute:18, overall:80, type:'End Mill' }`. `renderToolTable()` mengisi `#toolOffsetTable tbody` dari `toolTable`, baris `activeTool` diberi `active-row`. Listener click/change **didelegasikan** ke `tbody` (bukan per-baris).
+
+- [ ] **Step 1: Tambah smoke assertion**
+
+Di `scripts/verify.mjs`: assert `document.querySelectorAll('#toolOffsetTable tbody tr').length === 20`, lalu klik baris `data-tool="20"` via `page.evaluate` → assert `machine.tool === 20`.
+
+- [ ] **Step 2: Jalankan, pastikan gagal**
+
+Run: `timeout 420 npm run verify`
+Expected: FAIL (baris = 3).
+
+- [ ] **Step 3: Implementasi**
+
+`index.html`: sisakan `<tbody></tbody>` kosong. `main.js`: bangun `toolTable` 1-20 via loop; tulis `renderToolTable()`; ganti listener per-baris L1044-1056 menjadi dua listener delegasi di `#toolOffsetTable tbody` (`click` → `applyToolFromTable(+tr.dataset.tool)` bila target bukan INPUT; `change` → set `toolTable[+tr.dataset.tool][inp.dataset.field]`). Panggil `renderToolTable()` saat init (sebelum `syncOffsetInputsFromTables`).
+
+- [ ] **Step 4: Jalankan, pastikan lulus**
+
+Run: `timeout 420 npm run verify 2>&1 | tail -3`
+Expected: VERIFY HIJAU.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add index.html src/main.js scripts/verify.mjs
+git commit -m "feat(tool): tool magazine 20 posisi (bukan 3)"
+```
+
 ---
 
 ## Self-Review
 
-- **Spec coverage:** §4 arsitektur (Task 2-3), §4b warna cut (Task 6), §4c offset manual (Task 7), §5 data model (Task 2), §6 protokol per-chunk (Task 3-4), §7 ordering (Task 4), §8 dirty mapping (Task 2), §9 tepi kasus (Task 3 `empty`, dispose/resize; Task 4 fallback; loop terbatas `maxChunksPerUpdate`), §10 bench (Task 5), §11 testing (semua task), §3 non-goals dihormati (tak ada heightmap/LOD).
+- **Spec coverage:** §4 arsitektur (Task 2-3), §4b warna cut (Task 6), §4c offset manual (Task 7), §5 data model (Task 2), §6 protokol per-chunk (Task 3-4), §7 ordering (Task 4), §8 dirty mapping (Task 2), §9 tepi kasus (Task 3 `empty`, dispose/resize; Task 4 fallback; loop terbatas `maxChunksPerUpdate`), §10 bench (Task 5), §11 testing (semua task), §3 non-goals dihormati (tak ada heightmap/LOD). Task 8 (magazine 20) adalah setup UI, di luar spec meshing.
 - **Keputusan tertunda yang disadari:** `colorRaw` berubah (ganti material) belum me-remesh otomatis — langka, dicatat sebagai keterbatasan (spec §9); tidak ada task.
 - **Orientasi chunk:** Task 3 memakai origin dunia (bukan `mesh.position`) agar konsisten dengan `buildGreedyGeometry`; uji Review-Focus posisi ada di Task 3 (implisit lewat kecocokan tri single vs chunked; jika reviewer ingin eksplisit, tambah cek bounding box chunk).
