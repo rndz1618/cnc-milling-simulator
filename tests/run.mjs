@@ -611,6 +611,17 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   ok(empty === null, 'greedy: grid kosong → null');
 }
 
+// ---------- emitBounds (Task realtime cutting) ----------
+{
+  const { buildGreedyGeometry } = await import('../src/stock/greedyMesh.js');
+  const grid = new Uint8Array(2 * 1 * 1).fill(1);   // 2 voxel di X
+  const full = buildGreedyGeometry({ grid, nx: 2, ny: 1, nz: 1, originX: 0, originY: 0, originZ: 0, res: 1 });
+  eq(full.position.length / 9, 12, 'emitBounds: grid penuh 2x1x1 → 6 muka');
+  const only0 = buildGreedyGeometry({ grid, nx: 2, ny: 1, nz: 1, originX: 0, originY: 0, originZ: 0, res: 1,
+    emitBounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 } });
+  eq(only0.position.length / 9, 10, 'emitBounds: hanya voxel x=0 → 5 muka (muka +X internal hilang)');
+}
+
 // ---------- Tahap 8: VoxelStock greedy ----------
 {
   const { VoxelStock } = await import('../src/stock/VoxelStock.js');

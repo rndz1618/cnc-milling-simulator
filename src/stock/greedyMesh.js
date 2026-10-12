@@ -26,13 +26,18 @@ const axisOf = (vec) => (vec[0] ? 0 : vec[1] ? 1 : 2);
 export function buildGreedyGeometry({
   grid, nx, ny, nz,
   originX, originY, originZ, res,
-  colorRaw = COLOR_RAW, colorCut = COLOR_CUT
+  colorRaw = COLOR_RAW, colorCut = COLOR_CUT, emitBounds = null
 }) {
   const dims = [nx, ny, nz];
   const idx = (ix, iy, iz) => iz * nx * ny + iy * nx + ix;
   const isSolid = (ix, iy, iz) =>
     ix >= 0 && ix < nx && iy >= 0 && iy < ny && iz >= 0 && iz < nz &&
     grid[idx(ix, iy, iz)] === 1;
+  const inEmit = (ix, iy, iz) =>
+    !emitBounds ||
+    (ix >= emitBounds.minX && ix < emitBounds.maxX &&
+     iy >= emitBounds.minY && iy < emitBounds.maxY &&
+     iz >= emitBounds.minZ && iz < emitBounds.maxZ);
 
   const position = [];
   const normal = [];
@@ -59,6 +64,7 @@ export function buildGreedyGeometry({
           coord[va] = j;
           const ix = coord[0], iy = coord[1], iz = coord[2];
           if (!isSolid(ix, iy, iz)) continue;
+          if (!inEmit(ix, iy, iz)) continue;
 
           coord[a] = w + s;
           const nbgInBounds =
