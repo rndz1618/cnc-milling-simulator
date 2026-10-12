@@ -17,7 +17,8 @@ export class VoxelStock {
     originY = 0,
     originZ = -20,
     colorRaw = null,
-    meshService = null
+    meshService = null,
+    chunkVoxels = 8
   } = {}) {
     this.sizeX = sizeX;
     this.sizeY = sizeY;
@@ -27,10 +28,14 @@ export class VoxelStock {
     this.originY = originY;
     this.originZ = originZ;
     this.colorRaw = colorRaw || COLOR_RAW;
+    this.chunkVoxels = chunkVoxels;
+    this.maxChunksPerUpdate = 4;
 
     this.nx = Math.max(1, Math.ceil(sizeX / res));
     this.ny = Math.max(1, Math.ceil(sizeY / res));
     this.nz = Math.max(1, Math.ceil(sizeZ / res));
+
+    this._initChunks();
 
     this.grid = new Uint8Array(this.nx * this.ny * this.nz);
     this.mesh = null;
@@ -57,8 +62,47 @@ export class VoxelStock {
     return iz * this.nx * this.ny + iy * this.nx + ix;
   }
 
+  _chunkId(gx, gy) {
+    return gy * this.cw + gx;
+  }
+
+  _chunkOfVoxel(ix, iy) {
+    return { gx: Math.floor(ix / this.chunkVoxels), gy: Math.floor(iy / this.chunkVoxels) };
+  }
+
+  _markChunk(gx, gy) {
+    if (gx < 0 || gx >= this.cw || gy < 0 || gy >= this.chN) return;
+    const id = this._chunkId(gx, gy);
+    this.chunks[id].dirty = true;
+    this._dirtyChunks.add(id);
+  }
+
+  _markAllChunksDirty() {
+    for (const c of this.chunks) {
+      c.dirty = true;
+      this._dirtyChunks.add(c.id);
+    }
+  }
+
+  _initChunks() {
+    this.cw = Math.ceil(this.nx / this.chunkVoxels);
+    this.chN = Math.ceil(this.ny / this.chunkVoxels);
+    this.chunks = [];
+    this._dirtyChunks = new Set();
+    for (let gy = 0; gy < this.chN; gy++) {
+      for (let gx = 0; gx < this.cw; gx++) {
+        this.chunks.push({
+          id: this._chunkId(gx, gy), gx, gy,
+          version: 0, pending: false, dirty: true, empty: false, mesh: null
+        });
+      }
+    }
+    this._markAllChunksDirty();
+  }
+
   fill() {
     this.grid.fill(1);
+    this._markAllChunksDirty();
     this._dirty = true;
   }
 
@@ -81,6 +125,7 @@ export class VoxelStock {
     this.ny = Math.max(1, Math.ceil(this.sizeY / this.res));
     this.nz = Math.max(1, Math.ceil(this.sizeZ / this.res));
     this.grid = new Uint8Array(this.nx * this.ny * this.nz);
+    this._initChunks();
     this.fill();
     if (scene) this.updateMesh(scene, true);
   }
@@ -111,6 +156,7 @@ export class VoxelStock {
     const izStart = Math.max(0, Math.floor((zTip - this.originZ) / this.res));
 
     let changed = false;
+    let minIx = Infinity, maxIx = -Infinity, minIy = Infinity, maxIy = -Infinity;
     for (let iy = cy0 - rVox; iy <= cy0 + rVox; iy++) {
       for (let ix = cx0 - rVox; ix <= cx0 + rVox; ix++) {
         const wx = this.originX + (ix + 0.5) * this.res;
@@ -125,12 +171,25 @@ export class VoxelStock {
             if (this.grid[i]) {
               this.grid[i] = 0;
               changed = true;
+              if (ix < minIx) minIx = ix;
+              if (ix > maxIx) maxIx = ix;
+              if (iy < minIy) minIy = iy;
+              if (iy > maxIy) maxIy = iy;
             }
           }
         }
       }
     }
-    if (changed) this._dirty = true;
+    if (changed) {
+      this._dirty = true;
+      const gx0 = Math.floor((minIx - 1) / this.chunkVoxels);
+      const gx1 = Math.floor((maxIx + 1) / this.chunkVoxels);
+      const gy0 = Math.floor((minIy - 1) / this.chunkVoxels);
+      const gy1 = Math.floor((maxIy + 1) / this.chunkVoxels);
+      for (let gy = gy0; gy <= gy1; gy++) {
+        for (let gx = gx0; gx <= gx1; gx++) this._markChunk(gx, gy);
+      }
+    }
     return changed;
   }
 
