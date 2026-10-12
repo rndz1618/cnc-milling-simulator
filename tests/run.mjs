@@ -757,15 +757,21 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const { buildGreedyGeometry } = await import('../src/stock/greedyMesh.js');
   const scene = { children: [], add(m) { this.children.push(m); }, remove(m) { this.children = this.children.filter((x) => x !== m); } };
   // service yang mengembalikan geometry chunk dari spec (neck: build greedy dari spec)
-  const svc = { request(spec) { return Promise.resolve(buildGreedyGeometry(spec)); }, dispose() {} };
+  let calls = 0;
+  const svc = { request(spec) { calls++; return Promise.resolve(buildGreedyGeometry(spec)); }, dispose() {} };
   const s = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8, meshService: svc });
+  s.updateMesh(scene, true);
+  ok(calls > 0, 'chunk async: request meshService dipakai (bukan jalur sinkron)');
+  ok(s.chunks.some((c) => c.pending && !c.mesh), 'chunk async: sebelum resolve chunk pending & belum ter-mesh');
   for (let f = 0; f < 20; f++) { s.updateMesh(scene, true); await new Promise((r) => setTimeout(r, 0)); }
   ok(s.chunks.filter((c) => c.mesh).length === s.cw * s.chN, 'chunk async: semua chunk ter-mesh dari reply');
 
   // fallback: service reject → chunk di-mesh sinkron
-  const bad = { request() { return Promise.reject(new Error('x')); }, dispose() {} };
+  let badCalls = 0;
+  const bad = { request() { badCalls++; return Promise.reject(new Error('x')); }, dispose() {} };
   const s2 = new VoxelStock({ sizeX: 20, sizeY: 20, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8, meshService: bad });
   s2.updateMesh(scene, true); await new Promise((r) => setTimeout(r, 0));
+  ok(badCalls > 0, 'chunk async: fallback service mengirim request (bukan diabaikan)');
   ok(s2.chunks.some((c) => c.mesh), 'chunk async: service gagal → fallback sinkron');
 
   // balasan yang datang SETELAH dispose() harus dibuang (versi chunk di-bump)
@@ -773,6 +779,7 @@ ok(tapQ.alarms.some((a) => a.code === 'G84'), 'G84 + Q → alarm TANPA PECK');
   const ctl = { request(spec) { return new Promise((res) => pending.push(() => res(buildGreedyGeometry(spec)))); }, dispose() {} };
   const s3 = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 1, originX: 0, originY: 0, originZ: -10, chunkVoxels: 8, meshService: ctl });
   s3.updateMesh(scene, true);
+  ok(pending.length > 0, 'chunk async: request ditahan sebelum dispose (pending non-kosong)');
   s3.dispose(scene);
   for (const f of pending) f();          // balasan telat
   await new Promise((r) => setTimeout(r, 0));
