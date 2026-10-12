@@ -179,6 +179,8 @@ const LS_TOOLS = 'cnc-sim-tools';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => (n ?? 0).toFixed(3);
+// Versi badge ikut package.json lewat define Vite; guard agar aman di luar Vite.
+if ($('appVersion')) $('appVersion').textContent = 'v' + (typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0-dev');
 
 function loadPersistedOffsets() {
   try {

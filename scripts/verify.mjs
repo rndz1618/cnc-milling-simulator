@@ -5,6 +5,9 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { get } from 'node:http';
+import { readFileSync } from 'node:fs';
+
+const PKG_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const log = (s) => console.log('\n== ' + s + ' ==');
 
@@ -96,6 +99,7 @@ try {
       sk: document.querySelectorAll('#softkeys .sk').length,
       toolRows: document.querySelectorAll('#toolOffsetTable tbody tr').length,
       linesVisible: vis('#gcodeLines'),
+      badge: document.querySelector('#appVersion')?.textContent || '',
       feedHoldLabel: document.querySelector('#btnPause')?.textContent?.trim() || ''
     };
     click('#modeTabs .mode-tab[data-mode="jog"]');
@@ -255,6 +259,7 @@ try {
   if (droCount !== 4) problems.push('dro tabs=' + droCount + ' (harus 4 dari JSON)');
   if (skCount !== 8) problems.push('softkeys=' + skCount + ' (harus 8 dari JSON)');
   if (shell.toolRows < 20) problems.push('magazine tool < 20 (rows=' + shell.toolRows + ')');
+  if (shell.badge !== 'v' + PKG_VERSION) problems.push('badge versi header=' + shell.badge + ' (harus v' + PKG_VERSION + ' dari package.json)');
   if (!linesVisible) problems.push('default mem: #gcodeLines tidak terlihat');
   if (!jogVisible || !progHidden) problems.push('mode JOG tidak menampilkan #panelJog / menyembunyikan #panelProgram');
   if (!mdiVisible) problems.push('mode MDI tidak menampilkan #mdiWrap');
