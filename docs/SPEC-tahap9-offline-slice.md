@@ -1,5 +1,9 @@
 # SPEC — Tahap 9 (slice-1): Profil, Pustaka Program, Feedback Latihan — OFFLINE
 
+> **CATATAN (2026-10-11):** Tahap 9 (fondasi SaaS) akan dikerjakan di **repo/proyek TERPISAH**,
+> bukan di repo simulator ini (lompatan arsitektur besar: backend/auth/multi-tenant).
+> Dokumen ini disimpan sebagai bahan desain yang dibawa ke repo baru. **Bukan scope repo ini.**
+
 Status: rancangan disetujui (2026-10-11). Belum diimplementasikan.
 Catatan: backend/auth/multi-tenant ditunda ke slice berikutnya (lihat §12).
 

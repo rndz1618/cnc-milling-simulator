@@ -12,7 +12,7 @@ yang di-park, plus tahap berikutnya. Bahasa kerja: Bahasa Indonesia, istilah tek
 | # | Sumber | Item |
 |---|--------|------|
 | H2 | T7 | **Edit WCS/touch-off tak rebuild mesh** — posisi stok diturunkan dari WCS saat `build`, jadi mesh vs toolpath bisa divergen. Rebuild saat WCS berubah. |
-| H4 | T9 | **Tahap 9 — fondasi SaaS**: akun + multi-tenant, machine profile per institusi, pustaka program, scenario builder + penilaian otomatis, ekspor laporan. |
+| H4 | T9 | **Tahap 9 — fondasi SaaS**: akun + multi-tenant, machine profile per institusi, pustaka program, scenario builder + penilaian otomatis, ekspor laporan. **Akan dikerjakan di repo TERPISAH** (lihat `docs/SPEC-tahap9-offline-slice.md`). |
 
 ## Prioritas MEDIUM (korektnes/kualitas)
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Material terpotong realtime mengikuti gerakan spindle dengan me-remesh hanya chunk voxel yang berubah, bukan seluruh stok.
+**Goal:** Material terpotong realtime mengikuti gerakan spindle (remesh per-chunk), warna cut kontras dengan raw material per material, dan fixture bisa digeser manual (offset X/Y/Z).
 
 **Architecture:** `VoxelStock` dipecah jadi chunk XY (default 8 voxel, `nz` penuh). `cutCylinder`/`cutSegment` menandai chunk kotor; `updateMesh` me-remesh hanya chunk kotor (sinkron, atau via `meshService` per-chunk). Grid + cut + collision tetap di main thread.
 
@@ -301,10 +301,92 @@ git add -A
 git commit -m "chore(v0.14.0): realtime cutting (chunked meshing) + smoke/bench + docs/handoff"
 ```
 
+### Task 6: Warna cut kontras per material
+
+**Files:**
+- Modify: `src/stock/VoxelStock.js` (ctor, `buildGeometry`, `_buildChunkSpec`)
+- Test: `tests/run.mjs` (blok warna cut)
+
+**Interfaces:**
+- Produces: ctor menerima `colorCut = null`. Warna cut efektif = `colorCut || colorRaw.map((c) => c * 0.45)`. `buildGeometry` dan `_buildChunkSpec` mengoper `colorCut: <cut efektif>` ke `buildGreedyGeometry`.
+
+- [ ] **Step 1: Tulis test gagal**
+
+```js
+// ---------- warna cut kontras per material (Task realtime cutting) ----------
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const dark = [0.54, 0.56, 0.59];   // steel raw ~ abu, dulu nyaris sama dgn cut default
+  const s = new VoxelStock({ sizeX: 10, sizeY: 10, sizeZ: 10, res: 5, originX: 0, originY: 0, originZ: 0, colorRaw: dark });
+  s.cutSegment(0, 0, 0, 10, 0, 0, 3);
+  const col = s.buildGeometry().attributes.color.array;
+  const cutExpected = dark[0] * 0.45;
+  ok(Array.from(col).some((c, i) => i % 3 === 0 && Math.abs(c - cutExpected) < 1e-4),
+    'warna cut: muka cut = colorRaw*0.45 (kontras vs steel raw), cari ' + cutExpected);
+}
+```
+
+- [ ] **Step 2: Jalankan, pastikan gagal**
+
+Run: `npm test 2>&1 | grep "warna cut"`
+Expected: FAIL (masih pakai `COLOR_CUT` default `0.55`, bukan `0.243`).
+
+- [ ] **Step 3: Implementasi**
+
+Tambah `colorCut = null` ke ctor; simpan `this.colorCut = colorCut || this.colorRaw.map((c) => c * 0.45)`. Oper `colorCut: this.colorCut` di `buildGeometry` dan `_buildChunkSpec`. Biarkan default `COLOR_CUT` di `greedyMesh` sebagai fallback (tak dipakai jalur ini).
+
+- [ ] **Step 4: Jalankan, pastikan lulus**
+
+Run: `npm test 2>&1 | grep -E "warna cut|PASS:"`
+Expected: PASS, FAIL: 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/stock/VoxelStock.js tests/run.mjs
+git commit -m "feat(stock): warna cut kontras per material (digelapkan dari material)"
+```
+
+---
+
+### Task 7: Fixture offset manual (placement custom)
+
+**Files:**
+- Modify: `src/main.js` (`fixtureRowHtml` ~L454, `applyFixtureField` ~L486)
+- Test: `scripts/verify.mjs`
+
+**Interfaces:**
+- Produces: bila `f.placement === 'custom'`, `fixtureRowHtml` menambah tiga input X/Y/Z `data-field="offsetX|offsetY|offsetZ"` bernilai `f.offset.x/y/z`. `applyFixtureField` menangani ketiganya → set `f.offset` lalu rebuild.
+
+- [ ] **Step 1: Tambah smoke assertion**
+
+Di `scripts/verify.mjs` (bagian FIXTURE): set `placement='custom'`, isi `offsetX=20`, `offsetY=10` via `page.evaluate` + dispatch `change`, lalu baca `originX/originY` stok G54 → assert `originX === 20 && originY === 10`.
+
+- [ ] **Step 2: Jalankan, pastikan gagal**
+
+Run: `timeout 420 npm run verify`
+Expected: FAIL (input `offsetX` tak ada → stok tetap di origin).
+
+- [ ] **Step 3: Implementasi**
+
+`fixtureRowHtml`: bila `custom`, tambah label X/Y/Z dgn `data-field` offset*. `applyFixtureField`: cabang `offsetX/offsetY/offsetZ` → set `f.offset[axis] = num`.
+
+- [ ] **Step 4: Jalankan, pastikan lulus**
+
+Run: `timeout 420 npm run verify 2>&1 | tail -3`
+Expected: VERIFY HIJAU.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/main.js scripts/verify.mjs
+git commit -m "feat(fixture): input offset X/Y/Z untuk placement manual"
+```
+
 ---
 
 ## Self-Review
 
-- **Spec coverage:** §4 arsitektur (Task 2-3), §5 data model (Task 2), §6 protokol per-chunk (Task 3-4), §7 ordering (Task 4), §8 dirty mapping (Task 2), §9 tepi kasus (Task 3 `empty`, dispose/resize; Task 4 fallback; loop terbatas `maxChunksPerUpdate`), §10 bench (Task 5), §11 testing (semua task), §3 non-goals dihormati (tak ada heightmap/LOD).
+- **Spec coverage:** §4 arsitektur (Task 2-3), §4b warna cut (Task 6), §4c offset manual (Task 7), §5 data model (Task 2), §6 protokol per-chunk (Task 3-4), §7 ordering (Task 4), §8 dirty mapping (Task 2), §9 tepi kasus (Task 3 `empty`, dispose/resize; Task 4 fallback; loop terbatas `maxChunksPerUpdate`), §10 bench (Task 5), §11 testing (semua task), §3 non-goals dihormati (tak ada heightmap/LOD).
 - **Keputusan tertunda yang disadari:** `colorRaw` berubah (ganti material) belum me-remesh otomatis — langka, dicatat sebagai keterbatasan (spec §9); tidak ada task.
 - **Orientasi chunk:** Task 3 memakai origin dunia (bukan `mesh.position`) agar konsisten dengan `buildGreedyGeometry`; uji Review-Focus posisi ada di Task 3 (implisit lewat kecocokan tri single vs chunked; jika reviewer ingin eksplisit, tambah cek bounding box chunk).

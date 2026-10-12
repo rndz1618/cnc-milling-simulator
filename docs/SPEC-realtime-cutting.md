@@ -30,7 +30,7 @@ Kesimpulan: **chunked incremental meshing** (chunk 8 voxel) muat budget frame, t
 
 ## 3. Ruang lingkup & non-goals
 
-**In scope:** pecah `VoxelStock` jadi chunk; remesh hanya chunk kotor; swalayan di worker per-chunk.
+**In scope:** pecah `VoxelStock` jadi chunk; remesh hanya chunk kotor; swalayan di worker per-chunk; warna cut kontras per material; input offset manual fixture.
 **Non-goals:** heightmap/shader/GPU, LOD, greedy melintasi batas chunk, mengubah `Parser`/`Simulator`/koordinat.
 
 ## 4. Arsitektur
@@ -48,8 +48,15 @@ Simulator step → cutCylinder/cutSegment → tandai chunk kotor (Set)
 - **Border antar chunk benar**: meshing chunk menyertakan **padding 1 voxel** dari tetangga; muka pada bidang batas dibuang.
 - **Geometry chunk lokal** (origin 0); `THREE.Mesh.position` = origin chunk (hindari presisi float).
 
-## 5. Data model
+## 4b. Warna cut per material
 
+`VoxelStock` menerima `colorCut` (opsional). Default: **warna cut = `colorRaw * 0.45`** (digelapkan) sehingga selalu kontras terhadap material — termasuk **steel** yang warna mentahnya nyaris sama dengan `COLOR_CUT` lama. `buildGreedyGeometry` sudah menerima `colorCut`; alirkan dari ctor → `buildGeometry` + spec chunk. `FixtureManager` tak berubah (material → `colorRaw`; `colorCut` diturunkan dari `colorRaw`).
+
+## 4c. Fixture: offset manual
+
+Untuk `placement = 'custom'`, tampilkan input **X/Y/Z** (field `offsetX/offsetY/offsetZ`) yang mengisi `fixture.offset` → stok bisa digeser bebas (menutup M5). Material sudah bisa dipilih (dropdown → `colorRaw`). Ini perubahan UI terbatas, tak menyentuh meshing.
+
+## 5. Data model
 `VoxelStock` menyimpan:
 - `chunks`: array `{ id, ix, iy, originChunk, mesh (THREE.Mesh|null), version, pending (bool), dirty (bool), empty (bool) }`.
 - `cw, ch`: jumlah chunk X/Y.
