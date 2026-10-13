@@ -1,20 +1,28 @@
-# HANDOFF.md — state gelombang terakhir (v0.14.0)
+# HANDOFF.md — state gelombang terakhir (v0.14.1)
 > File ini sengaja SINGKAT dan di-update di akhir setiap gelombang development
 > (aturan di AGENTS.md §Alur kerja). Pengetahuan yang tahan lama ada di
 > docs/PLAN-LANJUTAN.md dan komentar kode — jangan duplikasi di sini.
 > Daftar tunggal semua item tertunda (Tahap 6–8 + review): lihat `docs/BACKLOG.md`.
-commit: a0b72ff
-status: v0.14.0 — W1 fixture polish: fix H2 (stok+vise ikut offset WCS), fixture geser bebas, warna potong kontras, magazine 20 tool.
-verify: test 172/172 · build OK · smoke browser OK (magazine 20, geser fixture mengubah origin, plus cek lama).
+commit: (isi saat commit)
+status: v0.14.1 — bugfix program Jack O00319: potongan dangkal tak terpotong + WCS G110–G129 tak bisa diatur offset + UX alarm tool-offset.
+verify: test 183/183 · build OK · smoke browser OK (tool length auto-save, baris offset G114 dinamis, magazine 20, geser fixture).
 ## Sedang berjalan
 - (tidak ada)
 ## Berikutnya
-1. **Tahap 9 (fondasi SaaS)** — dipindah ke branch/repo TERPISAH (perubahan mendasar: akun + multi-tenant, backend, penilaian). Tulis SPEC dulu sebelum kode.
+1. **Tahap 9 (fondasi SaaS)** — dipindah ke branch/repo TERPISAT (perubahan mendasar: akun + multi-tenant, backend, penilaian). Tulis SPEC dulu sebelum kode.
 2. Kandidat dari BACKLOG: M1 G92, M2 clamp miter G41, M3 G28 stale di `Compensator`, M4 touch-off XY `top-center`, M10 ukur FPS.
 - Ditunda (kandidat, dari Tahap 6): spasi-pause tak set `holdReason`; akuntansi `elapsed` ATC; miter tak di-clamp; G28 stale pos di Compensator. Plus **G92** di luar scope v0.11.0.
 - Ditunda (Tahap 8, YAGNI): pengukuran FPS penuh bila perlu.
 
-## Catatan gelombang terakhir (2026-10-12) — v0.14.0 (W1 fixture polish)
+## Catatan gelombang terakhir (2026-10-12) — v0.14.1 (bugfix laporan Jack, program O00319)
+- **Potongan dangkal tak terlihat**: `VoxelStock.cutCylinder` membandingkan **pusat** voxel (`originZ+(iz+0.5)*res`) dengan `zTip`. Untuk `Z-0.35` dengan res 1.0 → pusat voxel teratas −0.5 < −0.35 → tidak ada voxel dihapus. Ubah ambang jadi **muka atas voxel** (`wz >= zTip - res*0.5`). Test: cut 0.35 mm menghapus voxel; voxel di bawah muka potong tetap ada (bukan plunge-through).
+- **WCS G110–G129 tak bisa diatur**: baris tabel OFFSET hardcode G54–G59 di HTML → program yang memakai G110/G111 tidak punya baris offset. Kini tabel dirender dinamis (`renderWcsTable` + `offsetWcsList` = G54–G59 + WCS yang dipakai program), handler di-**delegasi** (bukan per-baris) supaya tetap hidup setelah re-render. `loadPersistedOffsets`/reset memuat semua kunci `machine.wcs`. `rebuildWcsMarkers` memakai daftar yang sama (guard entri belum ada).
+- **UX alarm tool-offset**: pesan menyebut baris + kolom (`TOOL OFFSET H03 LENGTH = 0 — SETUP → TOOL, isi kolom LENGTH baris T3`), auto-fokus `focusToolRow()` ke baris tsb, dan nilai LENGTH auto-simpan saat `change` (tanpa tunggu APPLY → tak hilang saat reload).
+- **Stok tak re-fit saat offset berubah**: `autoFitStock()` diekstrak dari `loadProgram` dan dipanggil di setiap jalur ubah offset WCS (input/ZERO/klik baris/APPLY/touch-off). Tanpa ini, menggeser offset membuat toolpath keluar dari stok lama.
+- **Dialek G-code**: `parseGCode(text, { extraWcs })` — range "work offset ekstra" default Haas G110–G129, bisa ditimpa/dimatikan dari profil controller (`haas-style.json` → `extraWcs`). Nomor sama arti lain di Siemens (pole) / Mazak (cross-machining); profil non-Haas pakai `{disabled:true}` supaya tetap alarm, bukan salah tafsir. **Belum ada preset per mesin** — cukup satu flag di profil.
+- Gate: `npm test` 183/183 · `npm run verify` hijau (termasuk smoke: tool length auto-save, baris offset G114 dinamis). Browser probe program O00319 penuh: DONE, tanpa pageerror, material terpotong.
+
+## Catatan gelombang W1 (v0.14.0) — fixture polish
 - **H2 SELESAI**: `FixtureManager.reposition()` memindahkan stok (origin saja, voxel tetap → material terpotong aman) + vise mengikuti offset WCS. Dipanggil di semua jalur edit WCS (input OFFSET/ZERO/Reset/Apply) dan touch-off. Unit test: origin bergeser, `remainingRatio` tetap.
 - **Geser fixture**: `stockOriginFor` menambahkan `offset` pada placement `top-center`/`top-corner`; input **Geser X/Y** di editor fixture. `custom` di-seed dari origin saat ini (tutup M5). Smoke: ubah offX → `stockInfo` berubah.
 - **Warna potong**: `COLOR_CUT` → teal `[0.20,0.55,0.58]` (kontras vs brass & alum); emissive material dinetralkan. Test kontras > 0.4.
@@ -22,7 +30,7 @@ verify: test 172/172 · build OK · smoke browser OK (magazine 20, geser fixture
 - **Badge versi otomatis**: `vite.config.js` `define __APP_VERSION__` dari `package.json`; `index.html` badge diisi `#appVersion`; smoke assert `badge === 'v'+versi` (anti-basi).
 - Dokumen disinkronkan ke v0.14.0/172 test: `AGENTS.md`, `README.md`, `docs/PLAN-LANJUTAN.md`.
 - Gate: `npm test` 172/172 · `npm run verify` hijau.
-## Catatan gelombang terakhir (2026-10-11) — bugfix v0.13.1 (H1 + H3)
+## Catatan gelombang (2026-10-11) — v0.13.1 (H1 + H3)
 - **H1 — XSS nama fixture**: helper baru `src/util/html.js` (`escapeHtml`: escape `& < > " '`). Dipakai di `main.js` pada render daftar fixture (`fixtureRowHtml`) dan opsi selector WCS. Unit test (`tests/run.mjs`) + assertion smoke end-to-end (`verify.mjs`: skenario jahat `<img src=x onerror=...>` di-load → `window.__xss` tak ter-set + `textContent` utuh). Diverifikasi RED dulu (tanpa escape) lalu GREEN.
 - **H3 — `G4 X` di G20**: `Parser.js` menyimpan `nxRaw` (nilai X sebelum `scale()`); dwell pakai `nxRaw`, bukan `nx` ter-konversi. `G4 P` memang sudah tak ter-skala. Unit test: `G20\nG4 X0.5` → `p=0.5` (bukan 12.7).
 - Gate: `npm test` 165/165 · `npm run verify` hijau (build + smoke, termasuk smoke XSS). Item H1/H3 dihapus dari `docs/BACKLOG.md`.
