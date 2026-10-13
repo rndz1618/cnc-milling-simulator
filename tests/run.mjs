@@ -97,11 +97,13 @@ const r = parseGCode(O20018);
 ok(r.moves.some((m) => m.type === 'rapid' && m.z === 0),
   'O20018: "G43 Z." → Z0 (bare decimal)');
 
-// G119 memunculkan alarm DAN blok tidak dieksekusi
-ok(r.alarms.some((a) => a.code === 'G119'),
-  'O20018: alarm untuk G119');
-ok(!r.moves.some((m) => m.x === 0 && m.y === 0 && m.type === 'rapid' && !m.machine),
-  'O20018: blok G119 TIDAK menghasilkan move X0 Y0');
+// G119 = sistem koordinat kerja #16 (dialek Haas mill) → WCS valid, BUKAN alarm.
+// (Bug lama: G110–G129 di luar whitelist → "Unknown G-code".)
+ok(!r.alarms.some((a) => a.code === 'G119'),
+  'O20018: G119 dikenali sebagai WCS #16 (tidak alarm)');
+const g119 = r.moves.find((m) => m.wcs === 'G119' && m.type === 'rapid');
+ok(g119 && g119.x === 0 && g119.y === 0,
+  'O20018: blok G119 menghasilkan rapid X0 Y0 di WCS G119');
 
 // WCS ter-tag per move
 const firstG54 = r.moves.find((m) => m.type === 'feed');
@@ -137,6 +139,29 @@ eq(tc[0].h, 3, 'O20018: H03 → h=3');
 // T3 M06 → entri tool
 eq(r.moves.filter((m) => m.type === 'tool' && m.tool === 3).length, 2,
   'O20018: dua T3 M06 → 2 entri tool');
+
+// ---------- G110–G129: sistem koordinat kerja tambahan (Haas mill #7–#26) ----------
+const gw = parseGCode('G00 G90 G110 X10. Y10.\nG01 G119 X5. Y5. F100\nG130 X1.');
+eq(gw.alarms.filter((a) => a.code === 'G130').length, 1,
+  'G130 (di luar G110–G129) tetap alarm');
+eq(gw.alarms.length, 1, 'G110/G119 tidak memunculkan alarm lain');
+const m110 = gw.moves.find((m) => m.wcs === 'G110' && m.type === 'rapid');
+const m119 = gw.moves.find((m) => m.wcs === 'G119' && m.type === 'feed');
+ok(m110, 'blok G110 ter-tag WCS G110');
+ok(m119, 'blok G119 ter-tag WCS G119');
+const stw = createMachineState();
+eq(moveTarget(m110, stw), { x: 10, y: 10, z: 0 },
+  'WCS G110 default offset 0 → work=machine');
+
+// Profil non-Haas bisa mematikan rentang G110–G129 (nomor itu dipakai Siemens
+// untuk pole, Mazak untuk cross-machining) → harus tetap alarm, bukan diam-diam
+// ditafsirkan jadi work offset.
+const gwOff = parseGCode('G00 G90 G110 X10.', { extraWcs: { disabled: true } });
+eq(gwOff.alarms.filter((a) => a.code === 'G110').length, 1,
+  'profil tanpa extraWcs: G110 tetap UNKNOWN (tidak salah tafsir)');
+const gwOn = parseGCode('G00 G90 G110 X10.', { extraWcs: { from: 110, to: 129 } });
+ok(gwOn.moves.some((m) => m.wcs === 'G110'),
+  'profil Haas: G114 tetap WCS (extraWcs eksplisit)');
 
 // ---------- N-line (bug kritis lama) ----------
 const nTest = parseGCode('N10 G0 X10\nN20 G1 X20 F100\nM30');
@@ -236,6 +261,24 @@ const { VoxelStock } = await import('../src/stock/VoxelStock.js');
   const msg = alarms[0] || '';
   ok(msg.includes('SOFT LIMIT Z') && msg.includes('200.0') && msg.includes('G54'),
     'Sim: pesan soft limit memuat target Z200 dan offset G54 → "' + msg.slice(0, 90) + '…"');
+}
+
+// ---------- Potongan dangkal (regresi Jack: Z-0.35 res 1.0 → tak terpotong) ----------
+{
+  const { VoxelStock } = await import('../src/stock/VoxelStock.js');
+  const s = new VoxelStock({ sizeX: 40, sizeY: 40, sizeZ: 20, res: 1.0, originX: 0, originY: 0, originZ: -20 });
+  s.cutSegment(10, 10, 5, 10, 10, -0.35, 6);
+  ok(s.remainingRatio < 1,
+    'cut dangkal Z-0.35 (res 1.0) benar-benar menghapus voxel (ratio=' + s.remainingRatio.toFixed(3) + ')');
+  const { ix, iy, iz } = s.worldToVoxel(10, 10, -0.35);
+  ok(s.grid[s.idx(ix, iy, iz)] === 0,
+    'voxel tempat ujung tool Z-0.35 terhapus');
+  ok(s.grid[s.idx(ix, iy, iz - 1)] === 1,
+    'voxel DI BAWAH muka potong (lebih dalam) tetap ada — bukan plunge-through');
+  // Kedalaman besar harus tetap menghapus cukup banyak.
+  const d = new VoxelStock({ sizeX: 40, sizeY: 40, sizeZ: 20, res: 1.0, originX: 0, originY: 0, originZ: -20 });
+  d.cutSegment(10, 10, 5, 10, 10, -10.5, 6);
+  ok(d.remainingRatio < 0.98, 'cut dalam Z-10.5 menghapus volume besar (ratio=' + d.remainingRatio.toFixed(3) + ')');
 }
 
 // ---------- Arc G2 (regresi dari SAMPLE) ----------

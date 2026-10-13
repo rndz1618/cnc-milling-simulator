@@ -186,12 +186,12 @@ function loadPersistedOffsets() {
   try {
     const w = JSON.parse(localStorage.getItem(LS_WCS) || 'null');
     if (w && typeof w === 'object') {
-      for (const k of WCS_NAMES) {
-        if (w[k] && machine.wcs[k]) {
-          machine.wcs[k].x = +w[k].x || 0;
-          machine.wcs[k].y = +w[k].y || 0;
-          machine.wcs[k].z = +w[k].z || 0;
-        }
+      // Termasuk WCS ekstra (G110–G129) yang diikuti baris offset-nya.
+      for (const k of Object.keys(w)) {
+        if (!machine.wcs[k]) machine.wcs[k] = { x: 0, y: 0, z: 0 };
+        machine.wcs[k].x = +w[k].x || 0;
+        machine.wcs[k].y = +w[k].y || 0;
+        machine.wcs[k].z = +w[k].z || 0;
       }
     }
     const t = JSON.parse(localStorage.getItem(LS_TOOLS) || 'null');
@@ -251,6 +251,34 @@ function renderToolTable() {
   }).join('');
 }
 renderToolTable();
+
+// ---------- WCS offset table ----------
+// Baris = G54–G59 + WCS ekstra yang dipakai program (Haas G110–G129 = sistem
+// koordinat #7–#26). Tanpa baris ekstra, program pakai G110/G111 tak bisa
+// diatur offset-nya → semua "ragum" jatuh di titik mesin yang sama.
+function wcsRowHtml(w) {
+  const o = machine.wcs[w] || { x: 0, y: 0, z: 0 };
+  return '<tr data-wcs="' + w + '"' + (w === machine.activeWcs ? ' class="active-row"' : '') + '>' +
+    '<td>' + w + '</td>' +
+    '<td><input type="number" step="0.001" value="' + (o.x || 0) + '" data-axis="x" /></td>' +
+    '<td><input type="number" step="0.001" value="' + (o.y || 0) + '" data-axis="y" /></td>' +
+    '<td><input type="number" step="0.001" value="' + (o.z || 0) + '" data-axis="z" /></td>' +
+    '<td><button class="btn btn-sm btn-set-zero">ZERO</button></td>' +
+    '</tr>';
+}
+function offsetWcsList() {
+  const extra = [];
+  for (const m of allMoves) {
+    if (m.wcs && !WCS_NAMES.includes(m.wcs) && !extra.includes(m.wcs)) extra.push(m.wcs);
+  }
+  return WCS_NAMES.concat(extra);
+}
+function renderWcsTable() {
+  const tbody = document.querySelector('#workOffsetTable tbody');
+  if (!tbody) return;
+  tbody.innerHTML = offsetWcsList().map(wcsRowHtml).join('');
+}
+renderWcsTable();
 
 // ---------- Alarm ----------
 function pushAlarm(msg, line) {
@@ -371,11 +399,31 @@ function applyToolFromTable(toolNum) {
   });
 }
 
+// Lempar operator langsung ke baris tool yang dimaksud saat G43 H gagal
+// (alarm "belum diatur") — supaya dia tak perlu mencari tabel mana yang diisi.
+function focusToolRow(h) {
+  try {
+    applyMode('setup');
+    applySetupSub('tool');
+    const row = document.querySelector('#toolOffsetTable tbody tr[data-tool="' + h + '"]');
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest' });
+    row.style.outline = '2px solid #ffcc66';
+    setTimeout(() => { row.style.outline = ''; }, 4000);
+  } catch (_) {}
+}
+
 // ---------- Simulator ----------
 const sim = new Simulator({
   stock,
   machine,
-  resolveStock: (wcs) => fixtures.stockFor(wcs),
+  // WCS tanpa fixture (mis. G56..G59/G110+ yang belum dibuat ragumnya) ≠ "tidak
+  // ada stok": jatuh ke stok lain yang ada. Kalau dibiarkan null, cutSegment dan
+  // _checkRapidCrash dilewati senyap → program jalan tapi material tak terpotong.
+  resolveStock: (wcs) => fixtures.stockFor(wcs) ||
+    fixtures.stockFor(machine.activeWcs) ||
+    fixtures.stockFor('G54') ||
+    stock,
   onResetStocks: () => fixtures.reset(),
   onUpdate: refreshUI,
   onLine: highlightLine,
@@ -395,11 +443,13 @@ const sim = new Simulator({
     }
     const t = toolTable[h];
     if (!t || !t.length) {
+      const why = t ? ' LENGTH = 0' : ' TIDAK ADA DI MAGAZINE';
       sim.alarm(
-        'TOOL OFFSET H' + String(h).padStart(2, '0') +
-        ' BELUM DIATUR — isi panjang tool di OFFSET → TOOL (F1)',
+        'TOOL OFFSET H' + String(h).padStart(2, '0') + why +
+        ' — SETUP → TOOL, isi kolom LENGTH baris T' + h + ', lalu APPLY & CYCLE START',
         null
       );
+      focusToolRow(h);
       return;
     }
     machine.hNum = h;
@@ -467,8 +517,9 @@ function rebuildTrail() {
 function rebuildWcsMarkers() {
   disposeGroup(wcsMarkersGroup);
   wcsMarkersGroup = new THREE.Group();
-  for (const w of WCS_NAMES) {
-    const off = machine.wcs[w];
+  for (const w of offsetWcsList()) {
+    // WCS dari program bisa belum punya entri (baru terlihat saat program load).
+    const off = machine.wcs[w] || { x: 0, y: 0, z: 0 };
     const active = w === machine.activeWcs;
     if (!active && off.x === 0 && off.y === 0 && off.z === 0 && w !== 'G54') continue;
     const marker = createWorkZeroMarker(active ? 20 : 9, w);
@@ -724,6 +775,11 @@ function refreshUI() {
   if ($('progressBar')) $('progressBar').style.width = pct + '%';
   if ($('progressText')) $('progressText').textContent = Math.round(pct) + '%';
 
+  // Sorot baris offset WCS aktif — program bisa pindah WCS saat jalan.
+  document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => {
+    r.classList.toggle('active-row', r.dataset.wcs === machine.activeWcs);
+  });
+
   const total = sim.totalTime || 1;
   const elapsed = sim.elapsed || 0;
   const fmtT = (s) => {
@@ -827,12 +883,15 @@ function applySetupSub(sub) {
 // ---------- Load program ----------
 function loadProgram() {
   const text = ($('gcodeInput') && $('gcodeInput').value) || SAMPLE;
-  const parsed = parseGCode(text);
+  const parsed = parseGCode(text, { extraWcs: profile.extraWcs });
   allMoves = applyCutterComp(parsed.moves || [], {
     getRadius: (d) => (toolTable[d]?.dia ?? 6) / 2
   });
   sim.loadMoves(allMoves, parsed.totalTime || 0);
   computeMachineMoves();
+  // Program bisa memakai WCS di luar G54–G59 (Haas G110–G129 = sistem koordinat
+  // #7–#26): tambahkan baris offset-nya supaya operator bisa mengisinya.
+  renderWcsTable();
 
   if (parsed.alarms && parsed.alarms.length) {
     parsed.alarms.forEach((a) => pushAlarm(a.msg + ' (baris ' + a.line + ')', a.line));
@@ -854,33 +913,39 @@ function loadProgram() {
   disposeGroup(trailGroup);
   trailGroup = null;
 
-  const autoFit = $('chkAutoFit') && $('chkAutoFit').checked;
-  if (autoFit && machineMoves.length) {
-    const toolR = (machine.toolDiameter || 12) / 2;
-    const b = boundsFromPoints(machineMoves, {
-      toolRadius: toolR,
-      topZ: machine.wcs.G54.z
-    });
-    if (b) {
-      stockSetup.sizeX = b.sizeX;
-      stockSetup.sizeY = b.sizeY;
-      stockSetup.sizeZ = b.sizeZ;
-      stockSetup.placement = 'custom';
-      stockSetup.originX = b.originX;
-      stockSetup.originY = b.originY;
-      stockSetup.originZ = b.originZ;
-      if ($('stockX')) $('stockX').value = Math.round(b.sizeX);
-      if ($('stockY')) $('stockY').value = Math.round(b.sizeY);
-      if ($('stockZ')) $('stockZ').value = Math.round(b.sizeZ);
-      applyStockSetup(true);
-      if ($('sbMsg')) $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b);
-    }
-  } else {
-    rebuildPreview();
-  }
+  autoFitStock();
+}
 
-  rebuildWcsMarkers();
-  refreshUI();
+// Stok auto-fit ke bounding toolpath. Dipanggil saat load program DAN saat
+// offset WCS/diameter tool berubah — kalau tidak, menggeser offset (mis. tiap
+// WCS = ragum berbeda) membuat toolpath keluar dari stok yang lama.
+function autoFitStock() {
+  const autoFit = $('chkAutoFit') && $('chkAutoFit').checked;
+  if (!autoFit || !machineMoves.length) {
+    rebuildPreview();
+    return;
+  }
+  const toolR = (machine.toolDiameter || 12) / 2;
+  const b = boundsFromPoints(machineMoves, {
+    toolRadius: toolR,
+    topZ: machine.wcs.G54.z
+  });
+  if (!b) {
+    rebuildPreview();
+    return;
+  }
+  stockSetup.sizeX = b.sizeX;
+  stockSetup.sizeY = b.sizeY;
+  stockSetup.sizeZ = b.sizeZ;
+  stockSetup.placement = 'custom';
+  stockSetup.originX = b.originX;
+  stockSetup.originY = b.originY;
+  stockSetup.originZ = b.originZ;
+  if ($('stockX')) $('stockX').value = Math.round(b.sizeX);
+  if ($('stockY')) $('stockY').value = Math.round(b.sizeY);
+  if ($('stockZ')) $('stockZ').value = Math.round(b.sizeZ);
+  applyStockSetup(true);
+  if ($('sbMsg')) $('sbMsg').textContent = 'Stock auto-fit: ' + formatStockSize(b);
 }
 
 // ---------- Jog ----------
@@ -1017,66 +1082,64 @@ document.getElementById('droTabs')?.addEventListener('click', (e) => {
 
 // WCS table: klik baris = aktifkan; ZERO = touch-off (offset = posisi mesin kini);
 // edit input offset = ubah offset → preview/trail/marker dihitung ulang.
-document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
-  row.addEventListener('click', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
-    document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
-    row.classList.add('active-row');
-    machine.activeWcs = row.dataset.wcs;
-    updateActiveCodes();
-    rebuildWcsMarkers();
-    refreshUI();
-  });
-  row.querySelectorAll('input').forEach((inp) => {
-    inp.addEventListener('change', () => {
-      machine.wcs[row.dataset.wcs][inp.dataset.axis] = parseFloat(inp.value) || 0;
-      savePersistedOffsets();
-      computeMachineMoves();
-      fixtures.reposition();
-      rebuildPreview();
-      rebuildWcsMarkers();
-      refreshUI();
+// Delegasi di tabel (bukan per-baris) supaya tetap jalan setelah renderWcsTable().
+document.getElementById('workOffsetTable')?.addEventListener('change', (e) => {
+  const inp = e.target;
+  const row = inp.closest('tr');
+  if (!row || !inp.dataset.axis) return;
+  const wcs = row.dataset.wcs;
+  if (!machine.wcs[wcs]) machine.wcs[wcs] = { x: 0, y: 0, z: 0 };
+  machine.wcs[wcs][inp.dataset.axis] = parseFloat(inp.value) || 0;
+  savePersistedOffsets();
+  computeMachineMoves();
+  fixtures.reposition();
+  autoFitStock();
+  rebuildWcsMarkers();
+  refreshUI();
+});
+
+document.getElementById('workOffsetTable')?.addEventListener('click', (e) => {
+  const row = e.target.closest('tr[data-wcs]');
+  if (!row) return;
+  const wcs = row.dataset.wcs;
+  document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
+  if (e.target.closest('.btn-set-zero')) {
+    machine.wcs[wcs] = { x: machine.x, y: machine.y, z: machine.z };
+    row.querySelectorAll('input').forEach((inp) => {
+      inp.value = machine.wcs[wcs][inp.dataset.axis].toFixed(3);
     });
-  });
-  const zeroBtn = row.querySelector('.btn-set-zero');
-  if (zeroBtn) {
-    zeroBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const wcs = row.dataset.wcs;
-      machine.wcs[wcs] = { x: machine.x, y: machine.y, z: machine.z };
-      row.querySelectorAll('input').forEach((inp) => {
-        inp.value = machine.wcs[wcs][inp.dataset.axis].toFixed(3);
-      });
-      document.querySelectorAll('#workOffsetTable tbody tr').forEach((r) => r.classList.remove('active-row'));
-      row.classList.add('active-row');
-      machine.activeWcs = wcs;
-      savePersistedOffsets();
-      computeMachineMoves();
-      fixtures.reposition();
-      rebuildPreview();
-      rebuildWcsMarkers();
-      updateActiveCodes();
-      refreshUI();
-      markTrain('partzero');
-      if (Math.abs(machine.wcs[wcs].z) > 50) {
-        if ($('sbMsg')) $('sbMsg').textContent = 'PERINGATAN: offset Z ' + wcs + ' besar (' +
-          machine.wcs[wcs].z.toFixed(1) + ') — program dengan Z positif bisa SOFT LIMIT. Jog dekat part dulu, lalu touch-off ulang.';
-      } else {
-        if ($('sbMsg')) $('sbMsg').textContent = wcs + ' ZERO di posisi mesin kini — offset disimpan';
-      }
-    });
+  } else if (e.target.tagName === 'INPUT') {
+    return;
+  }
+  row.classList.add('active-row');
+  machine.activeWcs = wcs;
+  savePersistedOffsets();
+  computeMachineMoves();
+  fixtures.reposition();
+  autoFitStock();
+  rebuildWcsMarkers();
+  updateActiveCodes();
+  refreshUI();
+  if (e.target.closest('.btn-set-zero')) {
+    markTrain('partzero');
+    if (Math.abs(machine.wcs[wcs].z) > 50) {
+      if ($('sbMsg')) $('sbMsg').textContent = 'PERINGATAN: offset Z ' + wcs + ' besar (' +
+        machine.wcs[wcs].z.toFixed(1) + ') — program dengan Z positif bisa SOFT LIMIT. Jog dekat part dulu, lalu touch-off ulang.';
+    } else {
+      if ($('sbMsg')) $('sbMsg').textContent = wcs + ' ZERO di posisi mesin kini — offset disimpan';
+    }
   }
 });
 
 if ($('btnResetWcs')) {
   $('btnResetWcs').addEventListener('click', () => {
-    for (const w of WCS_NAMES) machine.wcs[w] = { x: 0, y: 0, z: 0 };
+    for (const w of Object.keys(machine.wcs)) machine.wcs[w] = { x: 0, y: 0, z: 0 };
     machine.wcs.G55 = { x: 0, y: -90, z: 0 };
     savePersistedOffsets();
     syncOffsetInputsFromTables();
     computeMachineMoves();
     fixtures.reposition();
-    rebuildPreview();
+    autoFitStock();
     rebuildWcsMarkers();
     if (sim.state === 'alarm' || sim.state === 'hold') sim.stop();
     clearAlarms();
@@ -1089,6 +1152,7 @@ if ($('btnApplyWcs')) {
   $('btnApplyWcs').addEventListener('click', () => {
     document.querySelectorAll('#workOffsetTable tbody tr').forEach((row) => {
       const wcs = row.dataset.wcs;
+      if (!machine.wcs[wcs]) machine.wcs[wcs] = { x: 0, y: 0, z: 0 };
       row.querySelectorAll('input').forEach((inp) => {
         const ax = inp.dataset.axis;
         if (ax) machine.wcs[wcs][ax] = parseFloat(inp.value) || 0;
@@ -1097,7 +1161,7 @@ if ($('btnApplyWcs')) {
     savePersistedOffsets();
     computeMachineMoves();
     fixtures.reposition();
-    rebuildPreview();
+    autoFitStock();
     rebuildWcsMarkers();
     markTrain('partzero');
     if ($('sbMsg')) $('sbMsg').textContent = machine.activeWcs + ' applied — toolpath bergeser mengikuti offset';
@@ -1115,7 +1179,12 @@ document.querySelectorAll('#toolOffsetTable tbody tr').forEach((row) => {
     inp.addEventListener('change', () => {
       const t = toolTable[+row.dataset.tool];
       const f = inp.dataset.field;
-      if (t && f) t[f] = parseFloat(inp.value) || 0;
+      if (t && f) {
+        t[f] = parseFloat(inp.value) || 0;
+        // Simpan langsung: nilai ketik tak boleh hilang hanya karena operator
+        // lupa menekan "Apply Active Tool" (khusus setelah reload halaman).
+        savePersistedOffsets();
+      }
     });
   });
 });
@@ -1345,7 +1414,7 @@ function touchOffSetWcs() {
   savePersistedOffsets();
   computeMachineMoves();
   fixtures.reposition();
-  rebuildPreview();
+  autoFitStock();
   rebuildWcsMarkers();
   syncOffsetInputsFromTables();
   refreshUI();

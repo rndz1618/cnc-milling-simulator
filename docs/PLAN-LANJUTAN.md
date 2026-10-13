@@ -15,7 +15,7 @@ istilah teknis boleh English.
 | Simulator | ✅ Alarm menghentikan eksekusi (RESET untuk lanjut); soft limit halt; G00 nabrak material = RAPID CRASH (sampling radius); single block 1 blok/Cycle Start; M00/M01 hold; H offset belum diisi = alarm. |
 | Tool | ✅ Data-driven: dia/flute/overall dari tool table → geometri 3D. |
 | Stock/fixture | ✅ Ukuran + posisi manual (top-center/top-corner/custom), auto-fit sebagai saran, template vise visual, marker WCS per-fixture berlabel. |
-| Test | ✅ `npm test` — 172 unit test (golden file O20018 dari program nyata Jack). |
+| Test | ✅ `npm test` — 183 unit test (golden file O20018 dari program nyata Jack). |
 | Build | ✅ Vite dev/build/preview; deploy Vercel otomatis dari `main`. |
 
 **Invarian yang wajib dijaga:**
@@ -87,7 +87,7 @@ Tiga triad sumbu = **bukan bug**: (1) **ORIGIN MESIN** (oranye, di meja) titik n
 
 ## 5. Catatan handoff untuk AI harness lain
 
-**Aman dilanjutkan AI lain** karena: kode modular dengan batas tugas jelas, 172 unit test sebagai jaring pengaman regresi, invarian tertulis (bagian 1), dan program uji nyata (O20018) tersedia.
+**Aman dilanjutkan AI lain** karena: kode modular dengan batas tugas jelas, 183 unit test sebagai jaring pengaman regresi, invarian tertulis (bagian 1), dan program uji nyata (O20018) tersedia.
 
 **Urutan baca wajib:** `README.md` → dokumen ini → header `src/machine/Parser.js` (format entri) → `src/machine/MachineState.js` (model koordinat) → `src/sim/Simulator.js`.
 

@@ -127,7 +127,10 @@ export function normalizeProfile(raw) {
     modes,
     droModes: normDro(raw.droModes),
     setupSubs: normSubs(raw.setupSubs),
-    softkeys: normSoftkeys(raw.softkeys)
+    softkeys: normSoftkeys(raw.softkeys),
+    // Dialek G-code per mesin: rentang "work offset ekstra" (Haas G110–G129).
+    // Sengaja TIDAK divalidasi ketat — parser yang menentukan default.
+    extraWcs: raw.extraWcs && typeof raw.extraWcs === 'object' ? raw.extraWcs : null
   };
 }
 

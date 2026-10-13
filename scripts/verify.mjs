@@ -233,6 +233,42 @@ try {
     out.msg = document.querySelector('#sbMsg')?.textContent || '';
     return out;
   });
+
+  // Tool length: isi kolom LENGTH lalu commit (change) TANPA klik APPLY —
+  // harus tersimpan ke localStorage (regresi: operator lupa APPLY → nilai hilang
+  // setelah reload → "TOOL OFFSET H belum diatur" padahal sudah diisi).
+  const tl = await page.evaluate(() => {
+    const row = document.querySelector('#toolOffsetTable tbody tr[data-tool="3"]');
+    const inp = row && row.querySelector('input[data-field="length"]');
+    if (!inp) return { row: false };
+    inp.value = '71.5';
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    const saved = JSON.parse(localStorage.getItem('cnc-sim-tools') || '{}');
+    return { row: true, saved3: saved['3'] && saved['3'].length };  });
+  // WCS offset ekstra (Haas G110–G129): program yang memakainya harus membuat
+  // baris offset baru supaya operator bisa mengisinya. Regresi: dulu baris hanya
+  // G54–G59 hardcode → G110/G111 tak bisa diatur → semua "ragum" memotong di
+  // titik mesin yang sama dan terlihat tak ada material terpotong.
+  const wx = await page.evaluate(() => {
+    const rows = () => [...document.querySelectorAll('#workOffsetTable tbody tr')].map((r) => r.dataset.wcs);
+    const set = (w, v) => {
+      const row = document.querySelector(`#workOffsetTable tbody tr[data-wcs="${w}"]`);
+      if (!row) return false;
+      row.querySelectorAll('input').forEach((inp) => {
+        inp.value = String(v);
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      return true;
+    };
+    const before = rows();
+    const g = document.querySelector('#modeTabs .mode-tab[data-mode="edit"]');
+    if (g) g.click();
+    document.querySelector('#gcodeInput').value = 'G00 G90 G114 X0 Y0\nG01 Z-1. F100\nM30';
+    document.querySelector('#btnLoad').click();
+    const after = rows();
+    const setOk = set('G114', 25);
+    return { before: before.length, hasG114: after.includes('G114'), setOk };
+  });
   await browser.close();
 
   const glines = shell.glines;
@@ -287,6 +323,10 @@ try {
   if (!(Math.abs(to.g54x + 50) < 0.05)) problems.push('WCS G54 X tidak ter-set touch-off (x=' + to.g54x + ', harap edge kiri stok default -50)');
   if (!/Touch-off set/.test(to.msg || '')) problems.push('pesan touch-off tidak muncul (msg=' + to.msg + ')');
   if (!run.meshWorker) problems.push('mesh worker tidak aktif (window.__meshWorkerActive)');
+  if (!tl.row) problems.push('baris tool T3 tidak ada di #toolOffsetTable');
+  if (tl.saved3 !== 71.5) problems.push('tool length tak tersimpan tanpa APPLY (saved=' + tl.saved3 + ', harus 71.5)');
+  if (!wx.hasG114) problems.push('program pakai G114 tidak membuat baris offset WCS (baris=' + wx.before + ')');
+  if (!wx.setOk) problems.push('baris offset G114 tidak bisa diisi');
   if (errors.length) problems.push('pageerror: ' + errors[0]);
   if (problems.length) throw new Error(problems.join('; '));
   console.log('smoke OK — glines=' + glines + ' status=' + status + ' stock=' + stock);

@@ -106,8 +106,9 @@ export class VoxelStock {
     const r2 = radius * radius;
     const { ix: cx0, iy: cy0 } = this.worldToVoxel(cx, cy, zTip);
     const rVox = Math.ceil(radius / this.res) + 1;
-    // Mulai dari voxel yang memuat ujung tool: voxel di bawahnya tak akan pernah
-    // lolos cek wz >= zTip - 0.01, jadi aman dilewati (regresi cut tetap sama).
+    // Mulai dari voxel yang memuat ujung tool. Ambang voxel pakai setengah res
+    // (muka atas voxel >= zTip), bukan pusat: potongan dangkal (mis. Z-0.35
+    // dengan res 1.0) dulu tidak terlihat karena pusat voxel di bawah zTip.
     const izStart = Math.max(0, Math.floor((zTip - this.originZ) / this.res));
 
     let changed = false;
@@ -120,7 +121,7 @@ export class VoxelStock {
         for (let iz = izStart; iz < this.nz; iz++) {
           if (!this.inBounds(ix, iy, iz)) continue;
           const wz = this.originZ + (iz + 0.5) * this.res;
-          if (wz >= zTip - 0.01) {
+          if (wz >= zTip - this.res * 0.5) {
             const i = this.idx(ix, iy, iz);
             if (this.grid[i]) {
               this.grid[i] = 0;

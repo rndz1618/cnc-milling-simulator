@@ -6,7 +6,7 @@ Modular web CNC milling trainer with voxel material removal and Haas-style contr
 
 | Rev | Version | Notes |
 |-----|---------|-------|
-| — | 0.14.0 | Fix H2: offset WCS/touch-off kini memindahkan stok+vise (`FixtureManager.reposition`, material terpotong dipertahankan). Fixture bisa digeser bebas (Geser X/Y relatif WCS; `custom` di-seed dari posisi kini). Warna hasil potong kontras (teal, bukan abu) agar terlihat di semua material. Magazine tool 3 → 20 slot |
+| — | 0.14.0 | **Fix potongan dangkal tak terlihat** (`VoxelStock.cutCylinder` membandingkan pusat voxel vs zTip → potongan < res/2 tidak menghapus voxel). Baris offset WCS dinamis: program pakai G110–G129 (Haas = sistem koordinat #7–#26) sekarang dapat baris offset sendiri; alarm tool-offset menyebut baris + kolom, auto-fokus ke SETUP→TOOL, dan nilai LENGTH tersimpan tanpa APPLY. `parseGCode` menerima `extraWcs` dari profil controller (profil non-Haas bisa mematikannya). W1: fix H2 (stok+vise ikut offset WCS), geser fixture, magazine 20, badge versi otomatis |
 | — | 0.13.2 | Bugfix: material removal kini ter-update **selama** cutting berjalan (bukan hanya di akhir). `VoxelStock.updateMesh` membatasi satu permintaan meshing in-flight agar balasan worker tak selalu "basi" + tak menumpuk antrean |
 | — | 0.13.1 | Bugfix: escape `nama` fixture saat render (cegah XSS dari skenario ter-import); `G4 X` = detik (tak lagi terkonversi unit di G20) |
 | — | 0.13.0 | Material removal v2: greedy mesher (`buildGreedyGeometry`) + Web Worker meshing (`MeshService`/`meshWorker`, latest-wins + fallback sinkron), `VoxelStock.cutCylinder` optimasi; collision holder/shank saat G00 → alarm HOLDER CRASH (profil dari `machine.toolSpec`) |
@@ -28,7 +28,7 @@ npm install
 npm run dev      # dev server (Vite)
 npm run build    # production build → dist/
 npm run preview  # serve the production build
-npm test         # unit test 172 kasus (golden file: O20018)
+npm test         # unit test 183 kasus (golden file: O20018)
 npm run bench:mesh  # bench greedy mesher (ms + triangle)
 ```
 

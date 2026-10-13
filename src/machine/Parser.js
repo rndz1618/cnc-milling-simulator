@@ -12,11 +12,12 @@
  *
  * Dukungan: G0–G3 (arc IJK/R, G17), G4, G17–G19, G20/G21 (konversi inch↔mm),
  * G28, G40, G41/G42 (alarm: belum didukung), G43 H/G49, G53, G54–G59,
+ * G110–G129 (sistem koordinat kerja #7–#26, dialek Haas mill),
  * G80–G83 (canned cycle drill: G98/G99), G90/G91, M0/1/3/4/5/6/8/9/30/97/99,
  * subprogram lokal O#### + M97 P L (dialek Haas), N#### = nomor baris (bukan sub).
  * Bare decimal: "Z." = 0, "Z.5" = 0.5.
  */
-export function parseGCode(text) {
+export function parseGCode(text, { extraWcs = null } = {}) {
   const rawLines = text.split(/\r?\n/);
 
   // ---------- Pass 1: bersihkan baris, deteksi subprogram lokal (O####) ----------
@@ -85,7 +86,7 @@ export function parseGCode(text) {
     mainBlocks.push(blk);
   }
 
-  return blocksToMoves(mainBlocks);
+  return blocksToMoves(mainBlocks, extraWcs);
 }
 
 function parseAxisNum(numStr) {
@@ -157,7 +158,7 @@ function expandArc(x0, y0, z0, x1, y1, z1, i, j, k, r, cw, plane = 17, segs = 24
   return pts;
 }
 
-function blocksToMoves(blocks) {
+function blocksToMoves(blocks, extraWcs = null) {
   const moves = [];
   const alarms = [];
   // Posisi awal dalam koordinat WORK (untuk G91 tanpa referensi mesin).
@@ -171,6 +172,12 @@ function blocksToMoves(blocks) {
   let retract = 'G99';
   let cycle = null; // { g, z, r, q }
   let compSide = null; // 'left' | 'right' | null — modal cutter comp aktif
+  // Rentang G-code "work offset ekstra" (dialek mesin). Default superset
+  // Haas/Fanuc-mill G110–G129. Kontrol lain memakai nomor itu untuk hal lain
+  // (Siemens: pole; Mazak: cross-machining) — profil mesin bisa menimpanya
+  // dengan {from,to} atau mematikannya sama sekali dengan {disabled:true}.
+  const wcsExtra = extraWcs || { from: 110, to: 129 };
+  const isExtraWcs = (g) => !wcsExtra.disabled && g >= wcsExtra.from && g <= wcsExtra.to;
 
   const scale = () => (units === 'in' ? 25.4 : 1);
 
@@ -218,7 +225,7 @@ function blocksToMoves(blocks) {
     let blockAlarm = null;
 
     for (const g of gCodes) {
-      if (!KNOWN_G.has(g) && Number.isInteger(g)) {
+      if (!KNOWN_G.has(g) && Number.isInteger(g) && !isExtraWcs(g)) {
         blockAlarm = { code: 'G' + g, msg: 'UNKNOWN G-CODE G' + g, line: blk.lineNum };
         break;
       }
@@ -253,7 +260,7 @@ function blocksToMoves(blocks) {
       } else if (g === 49) {
         moves.push({ type: 'toolcomp', h: 0, line: blk.lineNum, raw: blk.raw.trim() });
       } else if (g === 53) sawG53 = true;
-      else if (g >= 54 && g <= 59) wcs = 'G' + g;
+      else if ((g >= 54 && g <= 59) || isExtraWcs(g)) wcs = 'G' + g;
       else if (g === 80) cycle = null;
       else if (g === 81 || g === 82 || g === 83 || g === 84) {
         if (g === 84 && nq != null) {

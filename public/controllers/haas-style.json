@@ -1,34 +1,114 @@
 {
   "name": "haas-style",
   "version": 1,
+  "extraWcs": {
+    "from": 110,
+    "to": 129
+  },
   "default": "mem",
   "modes": [
-    { "id": "edit", "label": "EDIT", "pane": "program", "view": "editor" },
-    { "id": "mem", "label": "MEM", "pane": "program", "view": "lines" },
-    { "id": "mdi", "label": "MDI", "pane": "program", "view": "mdi" },
-    { "id": "jog", "label": "JOG", "pane": "jog" },
-    { "id": "setup", "label": "SETUP", "pane": "setup" }
+    {
+      "id": "edit",
+      "label": "EDIT",
+      "pane": "program",
+      "view": "editor"
+    },
+    {
+      "id": "mem",
+      "label": "MEM",
+      "pane": "program",
+      "view": "lines"
+    },
+    {
+      "id": "mdi",
+      "label": "MDI",
+      "pane": "program",
+      "view": "mdi"
+    },
+    {
+      "id": "jog",
+      "label": "JOG",
+      "pane": "jog"
+    },
+    {
+      "id": "setup",
+      "label": "SETUP",
+      "pane": "setup"
+    }
   ],
   "droModes": [
-    { "id": "work", "label": "WORK" },
-    { "id": "machine", "label": "MACHINE" },
-    { "id": "operator", "label": "OPERATOR" },
-    { "id": "dtg", "label": "DTG" }
+    {
+      "id": "work",
+      "label": "WORK"
+    },
+    {
+      "id": "machine",
+      "label": "MACHINE"
+    },
+    {
+      "id": "operator",
+      "label": "OPERATOR"
+    },
+    {
+      "id": "dtg",
+      "label": "DTG"
+    }
   ],
   "setupSubs": [
-    { "id": "work", "label": "WORK" },
-    { "id": "tool", "label": "TOOL" },
-    { "id": "fixture", "label": "FIXTURE" }
+    {
+      "id": "work",
+      "label": "WORK"
+    },
+    {
+      "id": "tool",
+      "label": "TOOL"
+    },
+    {
+      "id": "fixture",
+      "label": "FIXTURE"
+    }
   ],
   "softkeys": [
-    { "f": 1, "label": "OFFSET", "action": "open-offset" },
-    { "f": 2, "label": "CURNT CMDS", "action": "current-cmds" },
-    { "f": 3, "label": "ALARM", "action": "alarm" },
-    { "f": 4, "label": "GRAPH", "action": "graph" },
-    { "f": 5, "label": "TRAINING", "action": "training" },
-    { "f": 6, "label": "COOLANT", "action": "coolant" },
-    { "f": 7, "label": "SINGLE BLK", "action": "single-block" },
-    { "f": 8, "label": "DRY RUN", "action": "dry-run" }
+    {
+      "f": 1,
+      "label": "OFFSET",
+      "action": "open-offset"
+    },
+    {
+      "f": 2,
+      "label": "CURNT CMDS",
+      "action": "current-cmds"
+    },
+    {
+      "f": 3,
+      "label": "ALARM",
+      "action": "alarm"
+    },
+    {
+      "f": 4,
+      "label": "GRAPH",
+      "action": "graph"
+    },
+    {
+      "f": 5,
+      "label": "TRAINING",
+      "action": "training"
+    },
+    {
+      "f": 6,
+      "label": "COOLANT",
+      "action": "coolant"
+    },
+    {
+      "f": 7,
+      "label": "SINGLE BLK",
+      "action": "single-block"
+    },
+    {
+      "f": 8,
+      "label": "DRY RUN",
+      "action": "dry-run"
+    }
   ],
   "keypad": {}
 }
